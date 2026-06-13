@@ -364,6 +364,15 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
     onRefresh()
   }
 
+  const bulkUpdateResults = async (runId: string, caseIds: string[], status: RunStatus) => {
+    const run = runs.find(r => r.id === runId)
+    if (!run) return
+    const results = { ...run.results }
+    caseIds.forEach(id => { results[id] = status })
+    await sb.from('test_runs').update({ results }).eq('id', runId)
+    onRefresh()
+  }
+
   const deleteRun = async (id: string) => {
     if (!confirm('Delete this test run?')) return
     await sb.from('test_runs').delete().eq('id', id)
@@ -441,30 +450,8 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
             </div>
 
             {isActive && (
-              <div>
-                {runCases.map((tc, i) => {
-                  const cur = (results[tc.id] || 'untested') as RunStatus
-                  return (
-                    <div key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f3f4f6' }}>
-                      <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 48 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
-                      <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
-                      <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        {(['pass', 'fail', 'skip'] as const).map(s => (
-                          <button key={s} onClick={() => updateResult(run.id, tc.id, s)}
-                            style={{
-                              padding: '4px 9px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
-                              borderRadius: 5, border: '1px solid #e5e7eb',
-                              background: cur === s ? STATUS_BTN[s].bg : '#fff',
-                              color: cur === s ? STATUS_BTN[s].color : '#9ca3af',
-                              fontWeight: cur === s ? 600 : 400,
-                            }}>{s}</button>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              <RunExecution run={run} runCases={runCases} results={results}
+                onUpdateResult={updateResult} onBulkUpdate={bulkUpdateResults} />
             )}
           </div>
         )
@@ -600,5 +587,113 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
           onClick={() => onSave(name.trim(), selected, sprintId, planId)}>Create run</Btn>
       </div>
     </Modal>
+  )
+}
+
+// ─── Run Execution with bulk selection ───────────────────────────────────────
+
+function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate }: {
+  run: TestRun
+  runCases: any[]
+  results: Record<string, RunStatus>
+  onUpdateResult: (runId: string, caseId: string, status: RunStatus) => void
+  onBulkUpdate: (runId: string, caseIds: string[], status: RunStatus) => void
+}) {
+  const [selected, setSelected] = useState<string[]>([])
+  const allSelected = selected.length === runCases.length && runCases.length > 0
+  const someSelected = selected.length > 0
+
+  const toggleOne = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const toggleAll = () => setSelected(allSelected ? [] : runCases.map(c => c.id))
+
+  const bulkSet = (status: RunStatus) => {
+    if (selected.length === 0) return
+    onBulkUpdate(run.id, selected, status)
+    setSelected([])
+  }
+
+  const statusColors: Record<string, { bg: string; color: string }> = {
+    pass: { bg: '#dcfce7', color: '#15803d' },
+    fail: { bg: '#fee2e2', color: '#dc2626' },
+    skip: { bg: '#fef9c3', color: '#ca8a04' },
+    untested: { bg: '#f3f4f6', color: '#6b7280' },
+  }
+
+  return (
+    <div>
+      {/* Bulk action toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderTop: '1px solid #f3f4f6', background: someSelected ? '#eff6ff' : '#fafafa' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#6b7280' }}>
+          <input type="checkbox" checked={allSelected} onChange={toggleAll}
+            ref={el => { if (el) el.indeterminate = someSelected && !allSelected }}
+            style={{ cursor: 'pointer' }} />
+          {someSelected ? `${selected.length} selected` : 'Select all'}
+        </label>
+
+        {someSelected && (
+          <>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>Set as:</span>
+            {(['pass', 'fail', 'skip'] as const).map(s => (
+              <button key={s} onClick={() => bulkSet(s)} style={{
+                padding: '4px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                borderRadius: 6, border: '1px solid #e5e7eb',
+                background: statusColors[s].bg, color: statusColors[s].color, fontWeight: 600,
+              }}>
+                {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
+              </button>
+            ))}
+            <button onClick={() => setSelected([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', fontFamily: 'inherit', marginLeft: 'auto' }}>
+              Clear selection
+            </button>
+          </>
+        )}
+
+        {!someSelected && (
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>Select cases to bulk update status</span>
+        )}
+      </div>
+
+      {/* Case rows */}
+      {runCases.map((tc, i) => {
+        const cur = (results[tc.id] || 'untested') as RunStatus
+        const isSelected = selected.includes(tc.id)
+        const sc = statusColors[cur]
+        return (
+          <div key={tc.id} style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px',
+            borderTop: '1px solid #f3f4f6',
+            background: isSelected ? '#eff6ff' : 'transparent',
+            transition: 'background 0.1s',
+          }}>
+            <input type="checkbox" checked={isSelected} onChange={() => toggleOne(tc.id)} style={{ cursor: 'pointer', flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+            <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
+
+            {/* Current status badge + individual buttons */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: sc.bg, color: sc.color, minWidth: 54, textAlign: 'center' }}>
+                {cur}
+              </span>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {(['pass', 'fail', 'skip'] as const).map(s => (
+                  <button key={s} onClick={() => onUpdateResult(run.id, tc.id, s)}
+                    title={s}
+                    style={{
+                      width: 24, height: 24, fontSize: 12, cursor: 'pointer',
+                      borderRadius: 4, border: `1px solid ${cur === s ? statusColors[s].color : '#e5e7eb'}`,
+                      background: cur === s ? statusColors[s].bg : '#fff',
+                      color: cur === s ? statusColors[s].color : '#9ca3af',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                    {s === 'pass' ? '✓' : s === 'fail' ? '✗' : '–'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
