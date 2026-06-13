@@ -1036,8 +1036,9 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
       const pc = priorityCfg[data.priority]
       const runResults = extra?.results
       const runId = extra?.runId
-      const extraBugs: any[] = extra?.bugs || bugs
-      const linkedBugs = extraBugs.filter((b: any) => b.test_case_id === data.id)
+      // Only show bugs when coming from run/plan context (extra.bugs set), not Test Cases tab
+      const showBugs = extra?.bugs !== undefined
+      const linkedBugs = showBugs ? (extra.bugs as any[]).filter((b: any) => b.test_case_id === data.id) : []
       const stCfg: Record<string, {bg:string;color:string;label:string}> = {
         open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},
         in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},
@@ -1070,8 +1071,8 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
           {data.description && <DDRow label="Description" value={data.description} />}
           {data.steps && <DDRow label="Steps to reproduce" value={<pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13, color: '#374151' }}>{data.steps}</pre>} />}
           {data.expected_result && <DDRow label="Expected result" value={data.expected_result} />}
-          {/* Linked bugs */}
-          <div style={{ marginTop: 8 }}>
+          {/* Linked bugs — only shown from run/plan context */}
+          {showBugs && <div style={{ marginTop: 8 }}>
             <p style={sectionLabel}>Linked bugs ({linkedBugs.length})</p>
             {linkedBugs.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No bugs linked to this test case.</p>}
             {linkedBugs.map((bug: any, i: number) => {
@@ -1088,7 +1089,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
                 </DDCard>
               )
             })}
-          </div>
+          </div>}
           {runId && (
             <div style={{ marginTop: 20 }}>
               <p style={sectionLabel}>Update Status</p>
