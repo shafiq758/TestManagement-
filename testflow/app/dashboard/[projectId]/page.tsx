@@ -11,12 +11,16 @@ import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus
 
 function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      {/* Overlay */}
-      <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} onClick={onClose} />
-      {/* Panel */}
-      <div style={{ width: 480, background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+      {/* Dark overlay — full screen, closes on click */}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={onClose} />
+      {/* Panel — fixed to right edge, above overlay */}
+      <div style={{
+        position: 'absolute', top: 0, right: 0, bottom: 0,
+        width: 480, background: '#fff',
+        boxShadow: '-4px 0 24px rgba(0,0,0,0.15)',
+        display: 'flex', flexDirection: 'column', overflowY: 'auto',
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <span style={{ fontWeight: 600, fontSize: 15 }}>{title}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>

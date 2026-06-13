@@ -241,9 +241,9 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
         }
         const sc = STATUS_CFG_LOCAL[viewingSprint.status]
         return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }}>
-            <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingSprint(null)} />
-            <div style={{ width: 460, background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingSprint(null)} />
+            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 460, background: '#fff', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff' }}>
                 <span style={{ fontWeight: 600, fontSize: 15 }}>{viewingSprint.name}</span>
                 <button onClick={() => setViewingSprint(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af' }}>×</button>
@@ -289,9 +289,9 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
       {viewingPlan && (() => {
         const planCasesLocal = cases.filter(c => viewingPlan.case_ids.includes(c.id))
         return (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }}>
-            <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingPlan(null)} />
-            <div style={{ width: 460, background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingPlan(null)} />
+            <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 460, background: '#fff', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff' }}>
                 <span style={{ fontWeight: 600, fontSize: 15 }}>📋 {viewingPlan.name}</span>
                 <button onClick={() => setViewingPlan(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af' }}>×</button>
@@ -325,9 +325,9 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
 
       {/* Test Case Detail from Plan */}
       {viewingPlanCase && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex' }}>
-          <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingPlanCase(null)} />
-          <div style={{ width: 440, background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingPlanCase(null)} />
+          <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 440, background: '#fff', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <button onClick={() => setViewingPlanCase(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', fontFamily: 'inherit' }}>← Back</button>
