@@ -166,13 +166,13 @@ export default function ProjectPage() {
   const [milestones, setMilestones] = useState<any[]>([])
   const [sprints, setSprints] = useState<any[]>([])
   const [testPlans, setTestPlans] = useState<any[]>([])
-  // Global drawer state — rendered at top level to avoid overflow clipping
-  const [drawerMilestone, setDrawerMilestone] = useState<any | null>(null)
-  const [drawerCase, setDrawerCase] = useState<any | null>(null)
-  const [drawerRun, setDrawerRun] = useState<any | null>(null)
-  const [drawerRunCase, setDrawerRunCase] = useState<any | null>(null)
-  const [drawerRunCaseResults, setDrawerRunCaseResults] = useState<Record<string, RunStatus>>({})
-  const [drawerRunId, setDrawerRunId] = useState<string | null>(null)
+  // Drill-down navigation stack
+  // Each entry: { type: 'milestone'|'sprint'|'plan'|'case'|'run'|'runcase', data: any, extra?: any }
+  const [navStack, setNavStack] = useState<Array<{type: string; data: any; extra?: any}>>([])
+  const pushNav = (type: string, data: any, extra?: any) => setNavStack(p => [...p, {type, data, extra}])
+  const popNav = () => setNavStack(p => p.slice(0, -1))
+  const goToIndex = (i: number) => setNavStack(p => p.slice(0, i + 1))
+  const clearNav = () => setNavStack([])
 
   const sb = createClient()
 
@@ -224,180 +224,43 @@ export default function ProjectPage() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
         {tab === 'cases' && (
           <CasesTab sections={sections} cases={cases} projectId={projectId}
-            myRole={myRole} onRefresh={load} onViewCase={setDrawerCase} />
+            myRole={myRole} onRefresh={load} onViewCase={(tc) => pushNav('case', tc)} />
         )}
         {tab === 'runs' && (
           <RunsTab runs={runs} cases={cases} sections={sections} sprints={sprints} testPlans={testPlans} projectId={projectId}
             myRole={myRole} onRefresh={load}
-            onViewRun={setDrawerRun}
-            onViewRunCase={(tc, results, runId) => { setDrawerRunCase(tc); setDrawerRunCaseResults(results); setDrawerRunId(runId) }} />
+            onViewRun={(run) => pushNav('run', run)}
+            onViewRunCase={(tc, results, runId) => pushNav('runcase', tc, {results, runId})} />
         )}
         {tab === 'sprints' && (
           <SprintsTab sprints={sprints} milestones={milestones} testPlans={testPlans}
             cases={cases} sections={sections} projectId={projectId}
-            canEdit={canEditCases(myRole)} onRefresh={load} />
+            canEdit={canEditCases(myRole)} onRefresh={load}
+            onViewSprint={(s) => pushNav('sprint', s)}
+            onViewPlan={(p) => pushNav('plan', p)} />
         )}
         {tab === 'milestones' && (
           <MilestonesTab milestones={milestones} projectId={projectId}
-            canEdit={canEditCases(myRole)} onRefresh={load} onViewMilestone={setDrawerMilestone} />
+            canEdit={canEditCases(myRole)} onRefresh={load} onViewMilestone={(m) => pushNav('milestone', m)} />
         )}
       </div>
 
-      {/* ── Global Drawers — rendered at top level, never clipped ── */}
+      {/* ── Drill-down Detail Panel ── */}
+      {navStack.length > 0 && <DrillDown
+        stack={navStack}
+        cases={cases} sections={sections} sprints={sprints}
+        testPlans={testPlans} runs={runs} milestones={milestones}
+        myRole={myRole}
+        onPush={pushNav} onPop={popNav} onGoTo={goToIndex} onClose={clearNav}
+        onUpdateRunResult={async (runId, caseId, status) => {
+          const run = runs.find(r => r.id === runId)
+          if (!run) return
+          const sb = createClient()
+          await sb.from('test_runs').update({ results: { ...run.results, [caseId]: status } }).eq('id', runId)
+          load()
+        }}
+      />}
 
-      {/* Milestone detail */}
-      {drawerMilestone && (
-        <GlobalDrawer title={drawerMilestone.name} onClose={() => setDrawerMilestone(null)}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            {(() => {
-              const cfg: Record<string, {bg:string;color:string;label:string}> = {
-                open: {bg:'#f3f4f6',color:'#374151',label:'Open'},
-                in_progress: {bg:'#dbeafe',color:'#1e40af',label:'In Progress'},
-                closed: {bg:'#d1fae5',color:'#065f46',label:'Closed'},
-              }
-              const c = cfg[drawerMilestone.status]
-              return <span style={{ background: c.bg, color: c.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{c.label}</span>
-            })()}
-          </div>
-          <GDRow label="Description" value={drawerMilestone.description} />
-          <GDRow label="Due date" value={drawerMilestone.due_date ? new Date(drawerMilestone.due_date).toLocaleDateString() : null} />
-          <GDRow label="Created" value={new Date(drawerMilestone.created_at).toLocaleDateString()} />
-          {/* Linked sprints */}
-          {(() => {
-            const linked = sprints.filter(s => s.milestone_id === drawerMilestone.id)
-            if (linked.length === 0) return null
-            return (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sprints ({linked.length})</p>
-                {linked.map((s, i) => (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
-                    <span style={{ fontSize: 13, flex: 1 }}>🏃 {s.name}</span>
-                    <span style={{ fontSize: 11, background: s.status === 'active' ? '#dcfce7' : s.status === 'completed' ? '#dbeafe' : '#f3f4f6', color: s.status === 'active' ? '#15803d' : s.status === 'completed' ? '#1e40af' : '#374151', padding: '1px 7px', borderRadius: 4, fontWeight: 600 }}>{s.status}</span>
-                  </div>
-                ))}
-              </div>
-            )
-          })()}
-          {canEditCases(myRole) && (
-            <button onClick={() => setDrawerMilestone(null)}
-              style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
-              Close
-            </button>
-          )}
-        </GlobalDrawer>
-      )}
-
-      {/* Test Case detail */}
-      {drawerCase && (
-        <GlobalDrawer title={drawerCase.title} onClose={() => setDrawerCase(null)}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, background: drawerCase.priority === 'high' ? '#fef2f2' : drawerCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: drawerCase.priority === 'high' ? '#dc2626' : drawerCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{drawerCase.priority}</span>
-            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{drawerCase.type}</span>
-            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{drawerCase.id.slice(0,5).toUpperCase()}</span>
-          </div>
-          <GDRow label="Description" value={drawerCase.description} />
-          <GDRow label="Steps to reproduce" value={drawerCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{drawerCase.steps}</pre> : null} />
-          <GDRow label="Expected result" value={drawerCase.expected_result} />
-          <GDRow label="Created" value={new Date(drawerCase.created_at).toLocaleDateString()} />
-          {canEditCases(myRole) && (
-            <button onClick={() => setDrawerCase(null)} style={{ marginTop: 8, border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
-              Close
-            </button>
-          )}
-        </GlobalDrawer>
-      )}
-
-      {/* Test Run case detail */}
-      {drawerRunCase && (
-        <GlobalDrawer title={drawerRunCase.title} onClose={() => setDrawerRunCase(null)}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, background: drawerRunCase.priority === 'high' ? '#fef2f2' : drawerRunCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: drawerRunCase.priority === 'high' ? '#dc2626' : drawerRunCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{drawerRunCase.priority}</span>
-            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{drawerRunCase.type}</span>
-            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{drawerRunCase.id.slice(0,5).toUpperCase()}</span>
-          </div>
-          <GDRow label="Current status" value={
-            <span style={{ fontWeight: 600, color: { pass:'#15803d', fail:'#dc2626', skip:'#ca8a04', untested:'#6b7280' }[drawerRunCaseResults[drawerRunCase.id] || 'untested'] as string }}>
-              {drawerRunCaseResults[drawerRunCase.id] || 'untested'}
-            </span>
-          } />
-          <GDRow label="Section" value={drawerRunCase.sectionName} />
-          <GDRow label="Description" value={drawerRunCase.description} />
-          <GDRow label="Steps to reproduce" value={drawerRunCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{drawerRunCase.steps}</pre> : null} />
-          <GDRow label="Expected result" value={drawerRunCase.expected_result} />
-          {drawerRunId && (
-            <div style={{ marginTop: 16 }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Update status</p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {(['pass','fail','skip'] as const).map(s => {
-                  const sc = {pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}}[s]
-                  return <button key={s} onClick={async () => {
-                    const run = runs.find(r => r.id === drawerRunId)
-                    if (!run) return
-                    const sb = createClient()
-                    await sb.from('test_runs').update({ results: { ...run.results, [drawerRunCase.id]: s } }).eq('id', drawerRunId)
-                    load()
-                    setDrawerRunCase(null)
-                  }} style={{ flex: 1, padding: '8px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: sc.bg, color: sc.color }}>
-                    {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
-                  </button>
-                })}
-              </div>
-            </div>
-          )}
-        </GlobalDrawer>
-      )}
-
-      {/* Test Run detail */}
-      {drawerRun && (() => {
-        const vRunCases = cases.map(c => ({ ...c, sectionName: sections.find(s => s.id === c.section_id)?.name || '' })).filter(c => drawerRun.case_ids.includes(c.id))
-        const vResults = drawerRun.results || {}
-        const passed = vRunCases.filter(c => vResults[c.id] === 'pass').length
-        const failed = vRunCases.filter(c => vResults[c.id] === 'fail').length
-        const skipped = vRunCases.filter(c => vResults[c.id] === 'skip').length
-        const untested = vRunCases.length - passed - failed - skipped
-        const pct = vRunCases.length ? Math.round((passed / vRunCases.length) * 100) : 0
-        const sprint = sprints.find(s => s.id === drawerRun.sprint_id)
-        const plan = testPlans.find(p => p.id === drawerRun.plan_id)
-        const stColors: Record<string, {bg:string;color:string}> = {pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'},untested:{bg:'#f3f4f6',color:'#6b7280'}}
-        return (
-          <GlobalDrawer title={drawerRun.name} onClose={() => setDrawerRun(null)}>
-            <GDRow label="Sprint" value={sprint?.name} />
-            <GDRow label="Test plan" value={plan?.name} />
-            <GDRow label="Created" value={new Date(drawerRun.created_at).toLocaleDateString()} />
-            <div style={{ marginBottom: 16 }}>
-              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Progress</p>
-              <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 13 }}>
-                <span style={{ color: '#15803d' }}>✓ {passed}</span>
-                <span style={{ color: '#dc2626' }}>✗ {failed}</span>
-                <span style={{ color: '#ca8a04' }}>— {skipped}</span>
-                <span style={{ color: '#9ca3af' }}>• {untested} untested</span>
-              </div>
-              <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: '#16a34a' }} />
-              </div>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>{pct}% complete</p>
-            </div>
-            <div>
-              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Test cases ({vRunCases.length})</p>
-              {vRunCases.map((tc, i) => {
-                const st = vResults[tc.id] || 'untested'
-                const sc = stColors[st]
-                return (
-                  <div key={tc.id} onClick={() => { setDrawerRunCase(tc); setDrawerRunCaseResults(vResults); setDrawerRunId(drawerRun.id); setDrawerRun(null) }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', cursor: 'pointer', borderRadius: 6 }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#f9fafb'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
-                    <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0,5).toUpperCase()}</span>
-                    <span style={{ fontSize: 13, flex: 1, textDecoration: 'underline', textDecorationColor: '#d1d5db' }}>{tc.title}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: sc.bg, color: sc.color }}>{st}</span>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
-                  </div>
-                )
-              })}
-            </div>
-          </GlobalDrawer>
-        )
-      })()}
     </div>
   )
 }
@@ -931,3 +794,331 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate, on
     </>
   )
 }
+
+// ─── DrillDown Panel ─────────────────────────────────────────────────────────
+// Renders as a full-height overlay with breadcrumb navigation
+
+function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestones, myRole, onPush, onPop, onGoTo, onClose, onUpdateRunResult }: {
+  stack: Array<{type: string; data: any; extra?: any}>
+  cases: any[]; sections: any[]; sprints: any[]; testPlans: any[]; runs: any[]; milestones: any[]
+  myRole: WorkspaceRole
+  onPush: (type: string, data: any, extra?: any) => void
+  onPop: () => void
+  onGoTo: (i: number) => void
+  onClose: () => void
+  onUpdateRunResult: (runId: string, caseId: string, status: RunStatus) => void
+}) {
+  const current = stack[stack.length - 1]
+
+  const stColors: Record<string, {bg:string;color:string}> = {
+    pass: {bg:'#dcfce7',color:'#15803d'},
+    fail: {bg:'#fee2e2',color:'#dc2626'},
+    skip: {bg:'#fef9c3',color:'#ca8a04'},
+    untested: {bg:'#f3f4f6',color:'#6b7280'},
+  }
+  const milestoneStatusCfg: Record<string, {bg:string;color:string;label:string}> = {
+    open: {bg:'#f3f4f6',color:'#374151',label:'Open'},
+    in_progress: {bg:'#dbeafe',color:'#1e40af',label:'In Progress'},
+    closed: {bg:'#d1fae5',color:'#065f46',label:'Closed'},
+  }
+  const sprintStatusCfg: Record<string, {bg:string;color:string;label:string}> = {
+    planned: {bg:'#f3f4f6',color:'#374151',label:'Planned'},
+    active: {bg:'#dcfce7',color:'#15803d',label:'Active'},
+    completed: {bg:'#dbeafe',color:'#1e40af',label:'Completed'},
+  }
+  const priorityCfg: Record<string, {bg:string;color:string}> = {
+    high: {bg:'#fef2f2',color:'#dc2626'},
+    medium: {bg:'#fffbeb',color:'#d97706'},
+    low: {bg:'#f0fdf4',color:'#16a34a'},
+  }
+
+  const typeLabel: Record<string, string> = {
+    milestone: '🎯 Milestone', sprint: '🏃 Sprint', plan: '📋 Test Plan',
+    case: '🧪 Test Case', run: '▶ Test Run', runcase: '🧪 Test Case',
+  }
+
+  const renderContent = () => {
+    const { type, data, extra } = current
+
+    // ── MILESTONE ──
+    if (type === 'milestone') {
+      const linkedSprints = sprints.filter(s => s.milestone_id === data.id)
+      const msc = milestoneStatusCfg[data.status]
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <span style={{ background: msc.bg, color: msc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{msc.label}</span>
+            {data.due_date && <span style={{ fontSize: 11, color: '#6b7280', padding: '2px 8px', background: '#f3f4f6', borderRadius: 5 }}>Due {new Date(data.due_date).toLocaleDateString()}</span>}
+          </div>
+          {data.description && <DDRow label="Description" value={data.description} />}
+          <DDRow label="Created" value={new Date(data.created_at).toLocaleDateString()} />
+          <div style={{ marginTop: 8 }}>
+            <p style={sectionLabel}>Sprints ({linkedSprints.length})</p>
+            {linkedSprints.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No sprints linked to this milestone.</p>}
+            {linkedSprints.map((s, i) => {
+              const sc = sprintStatusCfg[s.status]
+              const planCount = testPlans.filter(p => p.sprint_id === s.id).length
+              return (
+                <DDCard key={s.id} onClick={() => onPush('sprint', s)} last={i === linkedSprints.length - 1}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{s.name}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{planCount} test plan{planCount !== 1 ? 's' : ''}{s.start_date ? ` · ${new Date(s.start_date).toLocaleDateString()}` : ''}</p>
+                  </div>
+                  <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{sc.label}</span>
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                </DDCard>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+
+    // ── SPRINT ──
+    if (type === 'sprint') {
+      const sprintPlans = testPlans.filter(p => p.sprint_id === data.id)
+      const sprintRuns = runs.filter(r => r.sprint_id === data.id)
+      const milestone = milestones.find(m => m.id === data.milestone_id)
+      const sc = sprintStatusCfg[data.status]
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{sc.label}</span>
+            {milestone && <span style={{ fontSize: 11, color: '#6b7280', padding: '2px 8px', background: '#f3f4f6', borderRadius: 5 }}>🎯 {milestone.name}</span>}
+          </div>
+          {data.goal && <DDRow label="Goal" value={data.goal} />}
+          {(data.start_date || data.end_date) && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              {data.start_date && <DDRow label="Start" value={new Date(data.start_date).toLocaleDateString()} />}
+              {data.end_date && <DDRow label="End" value={new Date(data.end_date).toLocaleDateString()} />}
+            </div>
+          )}
+          <div style={{ marginBottom: 20 }}>
+            <p style={sectionLabel}>Test Plans ({sprintPlans.length})</p>
+            {sprintPlans.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No test plans in this sprint.</p>}
+            {sprintPlans.map((plan, i) => (
+              <DDCard key={plan.id} onClick={() => onPush('plan', plan)} last={i === sprintPlans.length - 1}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>📋 {plan.name}</p>
+                  {plan.description && <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{plan.description}</p>}
+                </div>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{plan.case_ids.length} cases</span>
+                <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+              </DDCard>
+            ))}
+          </div>
+          {sprintRuns.length > 0 && (
+            <div>
+              <p style={sectionLabel}>Test Runs ({sprintRuns.length})</p>
+              {sprintRuns.map((run, i) => {
+                const res = run.results || {}
+                const passed = run.case_ids.filter((id: string) => res[id] === 'pass').length
+                const pct = run.case_ids.length ? Math.round((passed / run.case_ids.length) * 100) : 0
+                return (
+                  <DDCard key={run.id} onClick={() => onPush('run', run)} last={i === sprintRuns.length - 1}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>▶ {run.name}</p>
+                      <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{run.case_ids.length} cases · {pct}% passed</p>
+                    </div>
+                    <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                  </DDCard>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // ── TEST PLAN ──
+    if (type === 'plan') {
+      const planCases = cases.map(c => ({...c, sectionName: sections.find(s => s.id === c.section_id)?.name || ''})).filter(c => data.case_ids.includes(c.id))
+      return (
+        <div>
+          {data.description && <DDRow label="Description" value={data.description} />}
+          <DDRow label="Cases" value={`${planCases.length} test case${planCases.length !== 1 ? 's' : ''}`} />
+          <div style={{ marginTop: 8 }}>
+            <p style={sectionLabel}>Test Cases ({planCases.length})</p>
+            {planCases.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No test cases in this plan.</p>}
+            {planCases.map((tc, i) => {
+              const pc = priorityCfg[tc.priority]
+              return (
+                <DDCard key={tc.id} onClick={() => onPush('case', tc)} last={i === planCases.length - 1}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName} · {tc.type}</p>
+                  </div>
+                  <span style={{ background: pc.bg, color: pc.color, fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                </DDCard>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+
+    // ── TEST CASE ──
+    if (type === 'case' || type === 'runcase') {
+      const pc = priorityCfg[data.priority]
+      const runResults = extra?.results
+      const runId = extra?.runId
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            <span style={{ background: pc.bg, color: pc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{data.priority}</span>
+            <span style={{ background: '#f3f4f6', color: '#374151', fontSize: 11, padding: '2px 8px', borderRadius: 5 }}>{data.type}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{data.id.slice(0,5).toUpperCase()}</span>
+          </div>
+          {runResults && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabel}>Current Status</p>
+              <span style={{ background: stColors[runResults[data.id] || 'untested'].bg, color: stColors[runResults[data.id] || 'untested'].color, fontSize: 13, fontWeight: 600, padding: '4px 12px', borderRadius: 6 }}>
+                {runResults[data.id] || 'untested'}
+              </span>
+            </div>
+          )}
+          {data.sectionName && <DDRow label="Section" value={data.sectionName} />}
+          {data.description && <DDRow label="Description" value={data.description} />}
+          {data.steps && <DDRow label="Steps to reproduce" value={<pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13, color: '#374151' }}>{data.steps}</pre>} />}
+          {data.expected_result && <DDRow label="Expected result" value={data.expected_result} />}
+          {runId && (
+            <div style={{ marginTop: 20 }}>
+              <p style={sectionLabel}>Update Status</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['pass','fail','skip'] as const).map(s => (
+                  <button key={s} onClick={() => onUpdateRunResult(runId, data.id, s)}
+                    style={{ flex: 1, padding: '9px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: stColors[s].bg, color: stColors[s].color }}>
+                    {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // ── TEST RUN ──
+    if (type === 'run') {
+      const runCases = cases.map(c => ({...c, sectionName: sections.find(s => s.id === c.section_id)?.name || ''})).filter(c => data.case_ids.includes(c.id))
+      const res = data.results || {}
+      const passed = runCases.filter(c => res[c.id] === 'pass').length
+      const failed = runCases.filter(c => res[c.id] === 'fail').length
+      const skipped = runCases.filter(c => res[c.id] === 'skip').length
+      const untested = runCases.length - passed - failed - skipped
+      const pct = runCases.length ? Math.round((passed / runCases.length) * 100) : 0
+      const sprint = sprints.find(s => s.id === data.sprint_id)
+      const plan = testPlans.find(p => p.id === data.plan_id)
+      return (
+        <div>
+          {sprint && <DDRow label="Sprint" value={<button onClick={() => onPush('sprint', sprint)} style={linkBtn}>🏃 {sprint.name} →</button>} />}
+          {plan && <DDRow label="Test plan" value={<button onClick={() => onPush('plan', plan)} style={linkBtn}>📋 {plan.name} →</button>} />}
+          <DDRow label="Created" value={new Date(data.created_at).toLocaleDateString()} />
+          <div style={{ marginBottom: 16 }}>
+            <p style={sectionLabel}>Progress</p>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 13 }}>
+              <span style={{ color: '#15803d' }}>✓ {passed} pass</span>
+              <span style={{ color: '#dc2626' }}>✗ {failed} fail</span>
+              <span style={{ color: '#ca8a04' }}>— {skipped} skip</span>
+              <span style={{ color: '#9ca3af' }}>• {untested} untested</span>
+            </div>
+            <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: '#16a34a' }} />
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>{pct}% complete</p>
+          </div>
+          <p style={sectionLabel}>Test Cases ({runCases.length})</p>
+          {runCases.map((tc, i) => {
+            const st = res[tc.id] || 'untested'
+            const sc = stColors[st]
+            const pc = priorityCfg[tc.priority]
+            return (
+              <DDCard key={tc.id} onClick={() => onPush('runcase', tc, {results: res, runId: data.id})} last={i === runCases.length - 1}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</p>
+                </div>
+                <span style={{ background: pc.bg, color: pc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{tc.priority}</span>
+                <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{st}</span>
+                <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+              </DDCard>
+            )
+          })}
+        </div>
+      )
+    }
+
+    return null
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex' }}>
+      {/* Overlay */}
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={onClose} />
+      {/* Panel */}
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 520, background: '#fff', display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)' }}>
+        {/* Breadcrumb header */}
+        <div style={{ padding: '0 20px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb', flexShrink: 0 }}>
+          {/* Breadcrumb trail */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '10px 0 0', flexWrap: 'wrap' }}>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', fontFamily: 'inherit', padding: '2px 4px' }}>Project</button>
+            {stack.map((entry, i) => (
+              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 11, color: '#d1d5db' }}>›</span>
+                <button onClick={() => i < stack.length - 1 ? onGoTo(i) : undefined}
+                  style={{ background: 'none', border: 'none', cursor: i < stack.length - 1 ? 'pointer' : 'default', fontSize: 12, color: i === stack.length - 1 ? '#111' : '#6b7280', fontFamily: 'inherit', fontWeight: i === stack.length - 1 ? 600 : 400, padding: '2px 4px' }}>
+                  {entry.data.name || entry.data.title}
+                </button>
+              </span>
+            ))}
+          </div>
+          {/* Current title + back */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {stack.length > 1 && (
+                <button onClick={onPop} style={{ background: 'none', border: '1px solid #e5e7eb', cursor: 'pointer', borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#6b7280', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  ← Back
+                </button>
+              )}
+              <div>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{typeLabel[current.type]}</span>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{current.data.name || current.data.title}</h2>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>
+          </div>
+        </div>
+        {/* Content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+          {renderContent()}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// DrillDown helper components
+function DDRow({ label, value }: { label: string; value?: React.ReactNode }) {
+  if (!value) return null
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <p style={sectionLabel}>{label}</p>
+      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{value}</div>
+    </div>
+  )
+}
+
+function DDCard({ children, onClick, last }: { children: React.ReactNode; onClick: () => void; last?: boolean }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div onClick={onClick}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: last ? 0 : 6, background: hovered ? '#f9fafb' : '#fff', transition: 'background 0.1s' }}>
+      {children}
+    </div>
+  )
+}
+
+const sectionLabel: React.CSSProperties = { margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }
+const linkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline' }

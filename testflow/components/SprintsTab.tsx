@@ -42,9 +42,10 @@ const inpStyle: React.CSSProperties = { width: '100%', border: '1px solid #d1d5d
 const btnStyle: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 13, background: '#fff', cursor: 'pointer' }
 const smBtn: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 10px', fontSize: 12, background: '#fff', cursor: 'pointer' }
 
-export default function SprintsTab({ sprints, milestones, testPlans, cases, sections, projectId, onRefresh, canEdit }: {
+export default function SprintsTab({ sprints, milestones, testPlans, cases, sections, projectId, onRefresh, canEdit, onViewSprint, onViewPlan }: {
   sprints: Sprint[]; milestones: Milestone[]; testPlans: TestPlan[]
   cases: TestCase[]; sections: Section[]; projectId: string; onRefresh: () => void; canEdit: boolean
+  onViewSprint?: (s: Sprint) => void; onViewPlan?: (p: TestPlan) => void
 }) {
   const [showSprintModal, setShowSprintModal] = useState(false)
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null)
@@ -198,7 +199,7 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                            <button onClick={() => setViewingPlan(plan)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit" }}>📋 {plan.name}</button>
+                            <button onClick={() => onViewPlan ? onViewPlan(plan) : setViewingPlan(plan)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit" }}>📋 {plan.name}</button>
                             <span style={{ fontSize: 11, color: '#9ca3af' }}>{planCases.length} case{planCases.length !== 1 ? 's' : ''}</span>
                           </div>
                           {plan.description && <p style={{ margin: '0 0 6px', fontSize: 12, color: '#6b7280' }}>{plan.description}</p>}
