@@ -1016,7 +1016,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
             {planCases.map((tc, i) => {
               const pc = priorityCfg[tc.priority]
               return (
-                <DDCard key={tc.id} onClick={() => onPush('case', tc)} last={i === planCases.length - 1}>
+                <DDCard key={tc.id} onClick={() => onPush('case', tc, {bugs})} last={i === planCases.length - 1}>
                   <div style={{ flex: 1 }}>
                     <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p>
                     <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName} · {tc.type}</p>
