@@ -48,9 +48,11 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
 }) {
   const [showSprintModal, setShowSprintModal] = useState(false)
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null)
-  const [showPlanModal, setShowPlanModal] = useState<string | null>(null) // sprintId
+  const [showPlanModal, setShowPlanModal] = useState<string | null>(null)
   const [editingPlan, setEditingPlan] = useState<TestPlan | null>(null)
   const [expandedSprints, setExpandedSprints] = useState<Record<string, boolean>>({})
+  const [viewingSprint, setViewingSprint] = useState<Sprint | null>(null)
+  const [viewingPlan, setViewingPlan] = useState<TestPlan | null>(null)
 
   const [sprintForm, setSprintForm] = useState({ name: '', goal: '', status: 'planned' as SprintStatus, start_date: '', end_date: '', milestone_id: '' })
   const [planForm, setPlanForm] = useState({ name: '', description: '', case_ids: [] as string[] })
@@ -153,7 +155,7 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
               </button>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>{sprint.name}</span>
+                  <button onClick={() => setViewingSprint(sprint)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600, fontSize: 14, color: '#111', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{sprint.name}</button>
                   <Badge status={sprint.status} />
                   {milestone && <span style={{ fontSize: 11, color: '#9ca3af', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>🎯 {milestone.name}</span>}
                 </div>
@@ -195,7 +197,7 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                            <span style={{ fontSize: 13, fontWeight: 600 }}>📋 {plan.name}</span>
+                            <button onClick={() => setViewingPlan(plan)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit" }}>📋 {plan.name}</button>
                             <span style={{ fontSize: 11, color: '#9ca3af' }}>{planCases.length} case{planCases.length !== 1 ? 's' : ''}</span>
                           </div>
                           {plan.description && <p style={{ margin: '0 0 6px', fontSize: 12, color: '#6b7280' }}>{plan.description}</p>}
@@ -226,6 +228,95 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
           </div>
         )
       })}
+
+      {/* Sprint Detail Drawer */}
+      {viewingSprint && (() => {
+        const sprintPlansLocal = testPlans.filter(p => p.sprint_id === viewingSprint.id)
+        const milestone = milestones.find(m => m.id === viewingSprint.milestone_id)
+        const STATUS_CFG_LOCAL: Record<string, {label: string; bg: string; color: string}> = {
+          planned: {label:'Planned', bg:'#f3f4f6', color:'#374151'},
+          active: {label:'Active', bg:'#dcfce7', color:'#15803d'},
+          completed: {label:'Completed', bg:'#dbeafe', color:'#1e40af'},
+        }
+        const sc = STATUS_CFG_LOCAL[viewingSprint.status]
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }}>
+            <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingSprint(null)} />
+            <div style={{ width: 460, background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff' }}>
+                <span style={{ fontWeight: 600, fontSize: 15 }}>{viewingSprint.name}</span>
+                <button onClick={() => setViewingSprint(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af' }}>×</button>
+              </div>
+              <div style={{ padding: 20 }}>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+                  <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{sc.label}</span>
+                  {milestone && <span style={{ background: '#f3f4f6', color: '#374151', fontSize: 11, padding: '2px 8px', borderRadius: 5 }}>🎯 {milestone.name}</span>}
+                </div>
+                {viewingSprint.goal && <div style={{ marginBottom: 16 }}><p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Goal</p><p style={{ margin: 0, fontSize: 13, color: '#374151' }}>{viewingSprint.goal}</p></div>}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  {viewingSprint.start_date && <div><p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Start</p><p style={{ margin: 0, fontSize: 13 }}>{new Date(viewingSprint.start_date).toLocaleDateString()}</p></div>}
+                  {viewingSprint.end_date && <div><p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>End</p><p style={{ margin: 0, fontSize: 13 }}>{new Date(viewingSprint.end_date).toLocaleDateString()}</p></div>}
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Test plans ({sprintPlansLocal.length})</p>
+                  {sprintPlansLocal.map((plan, i) => (
+                    <div key={plan.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 7, border: '1px solid #e5e7eb', marginBottom: 6, cursor: 'pointer' }}
+                      onClick={() => { setViewingPlan(plan); setViewingSprint(null) }}>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>📋 {plan.name}</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>{plan.case_ids.length} cases</span>
+                    </div>
+                  ))}
+                  {sprintPlansLocal.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No test plans yet.</p>}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => { openCreatePlan(viewingSprint.id); setViewingSprint(null) }}
+                    style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 0', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+                    + Add test plan
+                  </button>
+                  {canEdit && <button onClick={() => { openEditSprint(viewingSprint); setViewingSprint(null) }}
+                    style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 0', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+                    Edit sprint
+                  </button>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Test Plan Detail Drawer */}
+      {viewingPlan && (() => {
+        const planCasesLocal = cases.filter(c => viewingPlan.case_ids.includes(c.id))
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }}>
+            <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingPlan(null)} />
+            <div style={{ width: 460, background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff' }}>
+                <span style={{ fontWeight: 600, fontSize: 15 }}>📋 {viewingPlan.name}</span>
+                <button onClick={() => setViewingPlan(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af' }}>×</button>
+              </div>
+              <div style={{ padding: 20 }}>
+                {viewingPlan.description && <div style={{ marginBottom: 16 }}><p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Description</p><p style={{ margin: 0, fontSize: 13, color: '#374151' }}>{viewingPlan.description}</p></div>}
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Test cases ({planCasesLocal.length})</p>
+                  {planCasesLocal.map((tc, i) => (
+                    <div key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
+                      <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0,5).toUpperCase()}</span>
+                      <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+                      <span style={{ fontSize: 11, background: tc.priority === 'high' ? '#fef2f2' : tc.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: tc.priority === 'high' ? '#dc2626' : tc.priority === 'medium' ? '#d97706' : '#16a34a', padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
+                    </div>
+                  ))}
+                  {planCasesLocal.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No test cases in this plan.</p>}
+                </div>
+                {canEdit && <button onClick={() => { openEditPlan(viewingPlan); setViewingPlan(null) }}
+                  style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 0', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+                  Edit test plan
+                </button>}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Sprint Modal */}
       {showSprintModal && (

@@ -7,6 +7,36 @@ import MilestonesTab from '@/components/MilestonesTab'
 import SprintsTab from '@/components/SprintsTab'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
+// ─── Detail Drawer ───────────────────────────────────────────────────────────
+
+function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      {/* Overlay */}
+      <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} onClick={onClose} />
+      {/* Panel */}
+      <div style={{ width: 480, background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ padding: '20px', flex: 1 }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  if (!value) return null
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{value}</div>
+    </div>
+  )
+}
+
 // ─── UI primitives ────────────────────────────────────────────────────────────
 
 function Btn({ children, onClick, primary, sm, disabled, style = {} }: any) {
@@ -183,7 +213,9 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh }: { sections:
   const [sectionName, setSectionName] = useState('')
   const [addingCaseTo, setAddingCaseTo] = useState<string | null>(null)
   const [editingCase, setEditingCase] = useState<TestCase | null>(null)
+  const [viewingCase, setViewingCase] = useState<TestCase | null>(null)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const canEdit = canEditCases(myRole)
   const sb = createClient()
 
   const createSection = async () => {
@@ -294,6 +326,27 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh }: { sections:
           initial={editingCase}
           onSave={() => { setEditingCase(null); onRefresh() }} onClose={() => setEditingCase(null)} />
       )}
+      {viewingCase && (
+        <Drawer title={viewingCase.title} onClose={() => setViewingCase(null)}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <span style={{ fontSize: 11, background: viewingCase.priority === 'high' ? '#fef2f2' : viewingCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: viewingCase.priority === 'high' ? '#dc2626' : viewingCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{viewingCase.priority}</span>
+            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{viewingCase.type}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace', padding: '2px 0' }}>TC-{viewingCase.id.slice(0, 5).toUpperCase()}</span>
+          </div>
+          <DetailRow label="Description" value={viewingCase.description || '—'} />
+          <DetailRow label="Steps to reproduce" value={
+            viewingCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{viewingCase.steps}</pre> : '—'
+          } />
+          <DetailRow label="Expected result" value={viewingCase.expected_result || '—'} />
+          <DetailRow label="Created" value={new Date(viewingCase.created_at).toLocaleDateString()} />
+          {canEdit && (
+            <button onClick={() => { setEditingCase(viewingCase); setViewingCase(null) }}
+              style={{ marginTop: 8, border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+              Edit test case
+            </button>
+          )}
+        </Drawer>
+      )}
     </div>
   )
 }
@@ -349,6 +402,8 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
 function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void }) {
   const [creating, setCreating] = useState(false)
   const [activeRun, setActiveRun] = useState<string | null>(null)
+  const [viewingRun, setViewingRun] = useState<TestRun | null>(null)
+  const [viewingRunCase, setViewingRunCase] = useState<any | null>(null)
   const sb = createClient()
 
   const createRun = async (name: string, caseIds: string[], sprintId: string, planId: string) => {
@@ -427,7 +482,7 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
           <div key={run.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#f9fafb' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: '0 0 3px', fontWeight: 600, fontSize: 14 }}>{run.name}</p>
+                <button onClick={() => setViewingRun(run)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, margin: '0 0 3px', fontWeight: 600, fontSize: 14, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{run.name}</button>
                 <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>
                   {new Date(run.created_at).toLocaleDateString()} · {runCases.length} cases
                   {run.sprint_id && sprints.find((s: any) => s.id === run.sprint_id) && <span> · 🏃 {sprints.find((s: any) => s.id === run.sprint_id)?.name}</span>}
@@ -460,6 +515,56 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
       {creating && (
         <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />
       )}
+
+      {viewingRun && (() => {
+        const vRunCases = allCasesWithSection.filter(c => viewingRun.case_ids.includes(c.id))
+        const vResults = viewingRun.results || {}
+        const passed = vRunCases.filter(c => vResults[c.id] === 'pass').length
+        const failed = vRunCases.filter(c => vResults[c.id] === 'fail').length
+        const skipped = vRunCases.filter(c => vResults[c.id] === 'skip').length
+        const untested = vRunCases.length - passed - failed - skipped
+        const pct = vRunCases.length ? Math.round((passed / vRunCases.length) * 100) : 0
+        const sprint = sprints.find(s => s.id === viewingRun.sprint_id)
+        const plan = testPlans.find(p => p.id === viewingRun.plan_id)
+        return (
+          <Drawer title={viewingRun.name} onClose={() => setViewingRun(null)}>
+            <DetailRow label="Sprint" value={sprint?.name || '—'} />
+            <DetailRow label="Test plan" value={plan?.name || '—'} />
+            <DetailRow label="Created" value={new Date(viewingRun.created_at).toLocaleDateString()} />
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Progress</p>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 13 }}>
+                <span style={{ color: '#15803d' }}>✓ {passed} pass</span>
+                <span style={{ color: '#dc2626' }}>✗ {failed} fail</span>
+                <span style={{ color: '#ca8a04' }}>— {skipped} skip</span>
+                <span style={{ color: '#9ca3af' }}>• {untested} untested</span>
+              </div>
+              <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: '#16a34a', transition: 'width 0.3s' }} />
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>{pct}% complete</p>
+            </div>
+            <div>
+              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Test cases ({vRunCases.length})</p>
+              {vRunCases.map((tc, i) => {
+                const st = vResults[tc.id] || 'untested'
+                const stColors: Record<string, {bg: string; color: string}> = { pass: {bg:'#dcfce7',color:'#15803d'}, fail: {bg:'#fee2e2',color:'#dc2626'}, skip: {bg:'#fef9c3',color:'#ca8a04'}, untested: {bg:'#f3f4f6',color:'#6b7280'} }
+                return (
+                  <div key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
+                    <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 48 }}>TC-{tc.id.slice(0,5).toUpperCase()}</span>
+                    <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: stColors[st].bg, color: stColors[st].color }}>{st}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <button onClick={() => { setActiveRun(viewingRun.id); setViewingRun(null) }}
+              style={{ marginTop: 16, width: '100%', background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+              ▶ Execute this run
+            </button>
+          </Drawer>
+        )
+      })()}
     </div>
   )
 }
@@ -600,6 +705,7 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate }: 
   onBulkUpdate: (runId: string, caseIds: string[], status: RunStatus) => void
 }) {
   const [selected, setSelected] = useState<string[]>([])
+  const [viewingRunCase, setViewingRunCase] = useState<any | null>(null)
   const allSelected = selected.length === runCases.length && runCases.length > 0
   const someSelected = selected.length > 0
 
@@ -620,6 +726,7 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate }: 
   }
 
   return (
+    <>
     <div>
       {/* Bulk action toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderTop: '1px solid #f3f4f6', background: someSelected ? '#eff6ff' : '#fafafa' }}>
@@ -667,7 +774,7 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate }: 
           }}>
             <input type="checkbox" checked={isSelected} onChange={() => toggleOne(tc.id)} style={{ cursor: 'pointer', flexShrink: 0 }} />
             <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
-            <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+            <button onClick={() => setViewingRunCase(tc)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, flex: 1, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{tc.title}</button>
             <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
 
             {/* Current status badge + individual buttons */}
@@ -695,5 +802,37 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate }: 
         )
       })}
     </div>
+    {viewingRunCase && (
+        <Drawer title={viewingRunCase.title} onClose={() => setViewingRunCase(null)}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <span style={{ fontSize: 11, background: viewingRunCase.priority === 'high' ? '#fef2f2' : viewingRunCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: viewingRunCase.priority === 'high' ? '#dc2626' : viewingRunCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{viewingRunCase.priority}</span>
+            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{viewingRunCase.type}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{viewingRunCase.id.slice(0, 5).toUpperCase()}</span>
+          </div>
+          <DetailRow label="Current status" value={
+            <span style={{ fontWeight: 600, color: statusColors[(results[viewingRunCase.id] || 'untested')].color }}>
+              {results[viewingRunCase.id] || 'untested'}
+            </span>
+          } />
+          <DetailRow label="Section" value={viewingRunCase.sectionName} />
+          <DetailRow label="Description" value={viewingRunCase.description || '—'} />
+          <DetailRow label="Steps to reproduce" value={
+            viewingRunCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{viewingRunCase.steps}</pre> : '—'
+          } />
+          <DetailRow label="Expected result" value={viewingRunCase.expected_result || '—'} />
+          <div style={{ marginTop: 16 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Update status</p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['pass', 'fail', 'skip'] as const).map(s => (
+                <button key={s} onClick={() => { onUpdateResult(run.id, viewingRunCase.id, s); setViewingRunCase(null) }}
+                  style={{ flex: 1, padding: '8px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: statusColors[s].bg, color: statusColors[s].color }}>
+                  {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Drawer>
+      )}
+    </>
   )
 }
