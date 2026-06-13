@@ -6,6 +6,7 @@ import { canEditCases, canExecuteRuns, canCreateProjects } from '@/lib/roles'
 import MilestonesTab from '@/components/MilestonesTab'
 import SprintsTab from '@/components/SprintsTab'
 import BugsTab from '@/components/BugsTab'
+import AttachmentUploader, { type Attachment } from '@/components/AttachmentUploader'
 import type { Bug } from '@/types'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
@@ -169,6 +170,7 @@ export default function ProjectPage() {
   const [sprints, setSprints] = useState<any[]>([])
   const [testPlans, setTestPlans] = useState<any[]>([])
   const [bugs, setBugs] = useState<Bug[]>([])
+  const [execHistory, setExecHistory] = useState<any[]>([])
   // Drill-down navigation stack
   // Each entry: { type: 'milestone'|'sprint'|'plan'|'case'|'run'|'runcase', data: any, extra?: any }
   const [navStack, setNavStack] = useState<Array<{type: string; data: any; extra?: any}>>([])
@@ -201,6 +203,12 @@ export default function ProjectPage() {
     setProject(proj); setSections(secs || []); setCases(tcs || []); setRuns(trs || [])
     setMilestones(mils || []); setSprints(sprs || []); setTestPlans(plans || [])
     setBugs((bugsData as any) || [])
+    // Fetch execution history for all runs in project
+    const runIds = (trs || []).map((r: any) => r.id)
+    if (runIds.length > 0) {
+      const { data: hist } = await sb.from('execution_history').select('*').in('test_run_id', runIds).order('executed_at', {ascending: false})
+      setExecHistory(hist || [])
+    }
     setLoading(false)
   }, [projectId])
 
@@ -234,9 +242,9 @@ export default function ProjectPage() {
         )}
         {tab === 'runs' && (
           <RunsTab runs={runs} cases={cases} sections={sections} sprints={sprints} testPlans={testPlans} projectId={projectId}
-            myRole={myRole} onRefresh={load}
+            myRole={myRole} onRefresh={load} bugs={bugs} execHistory={execHistory}
             onViewRun={(run) => pushNav('run', run)}
-            onViewRunCase={(tc, results, runId) => pushNav('runcase', tc, {results, runId})} />
+            onViewRunCase={(tc, results, runId, bugsArr) => pushNav('runcase', tc, {results, runId, bugs: bugsArr || bugs})} />
         )}
         {tab === 'sprints' && (
           <SprintsTab sprints={sprints} milestones={milestones} testPlans={testPlans}
@@ -272,9 +280,9 @@ export default function ProjectPage() {
               <span style={{ background: stc.bg, color: stc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{drawerBug.status.replace('_',' ')}</span>
               <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(drawerBug.created_at).toLocaleDateString()}</span>
             </div>
-            <GDRow label="Sprint" value={sprint?.name} />
-            <GDRow label="Test run" value={run?.name} />
-            <GDRow label="Test case" value={tc?.title} />
+            <GDRow label="Sprint" value={sprint ? <button onClick={() => { setDrawerBug(null); pushNav('sprint', sprint) }} style={bugLinkBtn}>🏃 {sprint.name} →</button> : null} />
+            <GDRow label="Test run" value={run ? <button onClick={() => { setDrawerBug(null); pushNav('run', run) }} style={bugLinkBtn}>▶ {run.name} →</button> : null} />
+            <GDRow label="Test case" value={tc ? <button onClick={() => { setDrawerBug(null); pushNav('case', {...tc, sectionName: sections.find(s => s.id === tc.section_id)?.name || ''}) }} style={bugLinkBtn}>🧪 {tc.title} →</button> : null} />
             <GDRow label="Description" value={drawerBug.description} />
             <GDRow label="Steps to reproduce" value={drawerBug.steps ? <pre style={{ margin:0, fontFamily:'inherit', whiteSpace:'pre-wrap', fontSize:13 }}>{drawerBug.steps}</pre> : null} />
             <GDRow label="Expected result" value={drawerBug.expected_result} />
@@ -307,9 +315,10 @@ export default function ProjectPage() {
       {navStack.length > 0 && <DrillDown
         stack={navStack}
         cases={cases} sections={sections} sprints={sprints}
-        testPlans={testPlans} runs={runs} milestones={milestones}
+        testPlans={testPlans} runs={runs} milestones={milestones} bugs={bugs}
         myRole={myRole}
         onPush={pushNav} onPop={popNav} onGoTo={goToIndex} onClose={clearNav}
+        onViewBug={setDrawerBug}
         onUpdateRunResult={async (runId, caseId, status) => {
           const run = runs.find(r => r.id === runId)
           if (!run) return
@@ -455,16 +464,25 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
     expected_result: initial?.expected_result || '',
     priority: (initial?.priority || 'medium') as Priority,
     type: (initial?.type || 'functional') as CaseType,
+    attachments: (initial?.attachments || []).map((url: string, i: number) => ({
+      url, name: `attachment-${i+1}`,
+      type: (url.match(/\.(mp4|webm|mov)$/i) ? 'video' : 'image') as 'image'|'video',
+    })) as Attachment[],
   })
-  const set = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+  const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }))
   const sb = createClient()
 
   const save = async () => {
     if (!form.title.trim()) return
+    const payload = {
+      title: form.title, description: form.description, steps: form.steps,
+      expected_result: form.expected_result, priority: form.priority, type: form.type,
+      attachments: form.attachments.map((a: Attachment) => a.url),
+    }
     if (initial) {
-      await sb.from('test_cases').update({ ...form }).eq('id', initial.id)
+      await sb.from('test_cases').update(payload).eq('id', initial.id)
     } else {
-      await sb.from('test_cases').insert({ ...form, section_id: sectionId, project_id: projectId })
+      await sb.from('test_cases').insert({ ...payload, section_id: sectionId, project_id: projectId })
     }
     onSave()
   }
@@ -485,6 +503,13 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
       <Field label="Description"><Textarea value={form.description} onChange={(v: string) => set('description', v)} placeholder="Brief description" rows={2} /></Field>
       <Field label="Steps to reproduce"><Textarea value={form.steps} onChange={(v: string) => set('steps', v)} placeholder={"1. Navigate to...\n2. Click...\n3. Verify..."} rows={4} /></Field>
       <Field label="Expected result"><Textarea value={form.expected_result} onChange={(v: string) => set('expected_result', v)} placeholder="What should happen?" rows={2} /></Field>
+      <Field label="Attachments (optional)">
+        <AttachmentUploader
+          attachments={form.attachments}
+          onChange={(atts: Attachment[]) => set('attachments', atts)}
+          folder="test-cases"
+        />
+      </Field>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Btn onClick={onClose}>Cancel</Btn>
         <Btn primary onClick={save} disabled={!form.title.trim()}>Save</Btn>
@@ -495,7 +520,7 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
 
 // ─── Test Runs Tab ────────────────────────────────────────────────────────────
 
-function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh, onViewRun, onViewRunCase }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewRun: (run: TestRun) => void; onViewRunCase: (tc: any, results: Record<string, RunStatus>, runId: string) => void }) {
+function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh, onViewRun, onViewRunCase, bugs, execHistory }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewRun: (run: TestRun) => void; onViewRunCase: (tc: any, results: Record<string, RunStatus>, runId: string, bugs?: any[]) => void; bugs: any[]; execHistory: any[] }) {
   const [creating, setCreating] = useState(false)
   const [activeRun, setActiveRun] = useState<string | null>(null)
   const sb = createClient()
@@ -505,11 +530,18 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
     setCreating(false); onRefresh()
   }
 
-  const updateResult = async (runId: string, caseId: string, status: RunStatus) => {
+  const updateResult = async (runId: string, caseId: string, status: RunStatus, comment: string = '') => {
     const run = runs.find(r => r.id === runId)
     if (!run) return
     const results = { ...run.results, [caseId]: status }
     await sb.from('test_runs').update({ results }).eq('id', runId)
+    // Save to execution history
+    const { data: { session } } = await sb.auth.getSession()
+    await sb.from('execution_history').insert({
+      test_run_id: runId, test_case_id: caseId,
+      status, comment: comment.trim(),
+      executed_by: session?.user?.id,
+    })
     onRefresh()
   }
 
@@ -600,8 +632,10 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
 
             {isActive && (
               <RunExecution run={run} runCases={runCases} results={results}
+                execHistory={execHistory.filter(h => h.test_run_id === run.id)}
+                bugs={bugs}
                 onUpdateResult={updateResult} onBulkUpdate={bulkUpdateResults}
-                onViewCase={(tc) => onViewRunCase(tc, results, run.id)} />
+                onViewCase={(tc) => onViewRunCase(tc, results, run.id, bugs)} />
             )}
           </div>
         )
@@ -744,15 +778,19 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
 
 // ─── Run Execution with bulk selection ───────────────────────────────────────
 
-function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate, onViewCase }: {
+function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResult, onBulkUpdate, onViewCase }: {
   run: TestRun
   runCases: any[]
   results: Record<string, RunStatus>
-  onUpdateResult: (runId: string, caseId: string, status: RunStatus) => void
+  execHistory: any[]
+  bugs: any[]
+  onUpdateResult: (runId: string, caseId: string, status: RunStatus, comment?: string) => void
   onBulkUpdate: (runId: string, caseIds: string[], status: RunStatus) => void
   onViewCase: (tc: any) => void
 }) {
   const [selected, setSelected] = useState<string[]>([])
+  const [commentModal, setCommentModal] = useState<{caseId: string; status: RunStatus} | null>(null)
+  const [comment, setComment] = useState('')
   const allSelected = selected.length === runCases.length && runCases.length > 0
   const someSelected = selected.length > 0
 
@@ -831,7 +869,7 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate, on
               </span>
               <div style={{ display: 'flex', gap: 3 }}>
                 {(['pass', 'fail', 'skip'] as const).map(s => (
-                  <button key={s} onClick={() => onUpdateResult(run.id, tc.id, s)}
+                  <button key={s} onClick={() => { setCommentModal({caseId: tc.id, status: s}); setComment('') }}
                     title={s}
                     style={{
                       width: 24, height: 24, fontSize: 12, cursor: 'pointer',
@@ -856,15 +894,16 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate, on
 // ─── DrillDown Panel ─────────────────────────────────────────────────────────
 // Renders as a full-height overlay with breadcrumb navigation
 
-function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestones, myRole, onPush, onPop, onGoTo, onClose, onUpdateRunResult }: {
+function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestones, bugs, myRole, onPush, onPop, onGoTo, onClose, onUpdateRunResult, onViewBug }: {
   stack: Array<{type: string; data: any; extra?: any}>
-  cases: any[]; sections: any[]; sprints: any[]; testPlans: any[]; runs: any[]; milestones: any[]
+  cases: any[]; sections: any[]; sprints: any[]; testPlans: any[]; runs: any[]; milestones: any[]; bugs: any[]
   myRole: WorkspaceRole
   onPush: (type: string, data: any, extra?: any) => void
   onPop: () => void
   onGoTo: (i: number) => void
   onClose: () => void
   onUpdateRunResult: (runId: string, caseId: string, status: RunStatus) => void
+  onViewBug: (b: any) => void
 }) {
   const current = stack[stack.length - 1]
 
@@ -1021,6 +1060,21 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
       const pc = priorityCfg[data.priority]
       const runResults = extra?.results
       const runId = extra?.runId
+      const extraBugs: any[] = extra?.bugs || bugs
+      const linkedBugs = extraBugs.filter((b: any) => b.test_case_id === data.id)
+      const stCfg: Record<string, {bg:string;color:string;label:string}> = {
+        open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},
+        in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},
+        resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},
+        closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},
+        wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"},
+      }
+      const sevCfg: Record<string, {bg:string;color:string}> = {
+        critical:{bg:'#fef2f2',color:'#b91c1c'},
+        high:{bg:'#fff7ed',color:'#c2410c'},
+        medium:{bg:'#fffbeb',color:'#d97706'},
+        low:{bg:'#f0fdf4',color:'#15803d'},
+      }
       return (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -1040,6 +1094,25 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
           {data.description && <DDRow label="Description" value={data.description} />}
           {data.steps && <DDRow label="Steps to reproduce" value={<pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13, color: '#374151' }}>{data.steps}</pre>} />}
           {data.expected_result && <DDRow label="Expected result" value={data.expected_result} />}
+          {/* Linked bugs */}
+          <div style={{ marginTop: 8 }}>
+            <p style={sectionLabel}>Linked bugs ({linkedBugs.length})</p>
+            {linkedBugs.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No bugs linked to this test case.</p>}
+            {linkedBugs.map((bug: any, i: number) => {
+              const sc = sevCfg[bug.severity]
+              const bc = stCfg[bug.status]
+              return (
+                <DDCard key={bug.id} onClick={() => onViewBug(bug)} last={i === linkedBugs.length - 1}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>🐛 {bug.title}</p>
+                  </div>
+                  <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bug.severity}</span>
+                  <span style={{ background: bc.bg, color: bc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bc.label}</span>
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                </DDCard>
+              )
+            })}
+          </div>
           {runId && (
             <div style={{ marginTop: 20 }}>
               <p style={sectionLabel}>Update Status</p>
@@ -1180,3 +1253,4 @@ function DDCard({ children, onClick, last }: { children: React.ReactNode; onClic
 
 const sectionLabel: React.CSSProperties = { margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline' }
+const bugLinkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline', textAlign: 'left' as const }
