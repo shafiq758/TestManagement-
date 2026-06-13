@@ -16,7 +16,14 @@ export default function WorkspaceSetup({ userId, userEmail }: { userId: string; 
     const { data: ws, error: e } = await sb.from('workspaces')
       .insert({ name: name.trim(), owner_id: userId })
       .select().single()
-    if (e || !ws) { setError(e?.message || 'Failed to create workspace'); setLoading(false); return }
+    if (e || !ws) {
+      if (e?.code === '23505') {
+        setError(`A workspace named "${name.trim()}" already exists. Please choose a different name.`)
+      } else {
+        setError(e?.message || 'Failed to create workspace')
+      }
+      setLoading(false); return
+    }
     await sb.from('workspace_members').insert({
       workspace_id: ws.id, user_id: userId,
       role: 'admin', invited_email: userEmail,

@@ -98,3 +98,27 @@ export interface TestPlan {
   case_ids: string[]
   created_at: string
 }
+
+// ── Batch 2: Bugs ─────────────────────────────────────────────
+
+export type BugSeverity = 'critical' | 'high' | 'medium' | 'low'
+export type BugStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'wont_fix'
+
+export interface Bug {
+  id: string
+  title: string
+  description: string
+  steps: string
+  expected_result: string
+  actual_result: string
+  severity: BugSeverity
+  status: BugStatus
+  priority: Priority
+  project_id: string
+  sprint_id: string | null
+  test_run_id: string | null
+  test_case_id: string | null
+  attachments: string[]   // array of Supabase storage URLs
+  created_by: string
+  created_at: string
+}

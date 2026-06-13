@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase'
 import { canEditCases, canExecuteRuns, canCreateProjects } from '@/lib/roles'
 import MilestonesTab from '@/components/MilestonesTab'
 import SprintsTab from '@/components/SprintsTab'
+import BugsTab from '@/components/BugsTab'
+import type { Bug } from '@/types'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
 // ─── Detail Drawer ───────────────────────────────────────────────────────────
@@ -160,15 +162,17 @@ export default function ProjectPage() {
   const [sections, setSections] = useState<Section[]>([])
   const [cases, setCases] = useState<TestCase[]>([])
   const [runs, setRuns] = useState<TestRun[]>([])
-  const [tab, setTab] = useState<'cases' | 'runs' | 'sprints' | 'milestones'>('cases')
+  const [tab, setTab] = useState<'cases' | 'runs' | 'sprints' | 'milestones' | 'bugs'>('cases')
   const [loading, setLoading] = useState(true)
   const [myRole, setMyRole] = useState<WorkspaceRole>('viewer')
   const [milestones, setMilestones] = useState<any[]>([])
   const [sprints, setSprints] = useState<any[]>([])
   const [testPlans, setTestPlans] = useState<any[]>([])
+  const [bugs, setBugs] = useState<Bug[]>([])
   // Drill-down navigation stack
   // Each entry: { type: 'milestone'|'sprint'|'plan'|'case'|'run'|'runcase', data: any, extra?: any }
   const [navStack, setNavStack] = useState<Array<{type: string; data: any; extra?: any}>>([])
+  const [drawerBug, setDrawerBug] = useState<Bug | null>(null)
   const pushNav = (type: string, data: any, extra?: any) => setNavStack(p => [...p, {type, data, extra}])
   const popNav = () => setNavStack(p => p.slice(0, -1))
   const goToIndex = (i: number) => setNavStack(p => p.slice(0, i + 1))
@@ -184,7 +188,7 @@ export default function ProjectPage() {
       const { data: mem } = await sb.from('workspace_members').select('role').eq('user_id', session.user.id).eq('status', 'active').single()
       if (mem) setMyRole(mem.role)
     }
-    const [{ data: proj }, { data: secs }, { data: tcs }, { data: trs }, { data: mils }, { data: sprs }, { data: plans }] = await Promise.all([
+    const [{ data: proj }, { data: secs }, { data: tcs }, { data: trs }, { data: mils }, { data: sprs }, { data: plans }, { data: bugsData }] = await Promise.all([
       sb.from('projects').select('*').eq('id', projectId).single(),
       sb.from('sections').select('*').eq('project_id', projectId).order('created_at'),
       sb.from('test_cases').select('*').eq('project_id', projectId).order('created_at'),
@@ -192,9 +196,11 @@ export default function ProjectPage() {
       sb.from('milestones').select('*').eq('project_id', projectId).order('created_at'),
       sb.from('sprints').select('*').eq('project_id', projectId).order('created_at'),
       sb.from('test_plans').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('bugs').select('*').eq('project_id', projectId).order('created_at', {ascending: false}),
     ])
     setProject(proj); setSections(secs || []); setCases(tcs || []); setRuns(trs || [])
     setMilestones(mils || []); setSprints(sprs || []); setTestPlans(plans || [])
+    setBugs((bugsData as any) || [])
     setLoading(false)
   }, [projectId])
 
@@ -209,7 +215,7 @@ export default function ProjectPage() {
       <div style={{ padding: '18px 26px 0', borderBottom: '1px solid #e5e7eb' }}>
         <h1 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 600 }}>{project.name}</h1>
         <div style={{ display: 'flex', gap: 0 }}>
-          {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones']] as const).map(([t, label]) => (
+          {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones'], ['bugs', 'Bugs']] as const).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t as any)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
               fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 600 : 400,
@@ -243,7 +249,59 @@ export default function ProjectPage() {
           <MilestonesTab milestones={milestones} projectId={projectId}
             canEdit={canEditCases(myRole)} onRefresh={load} onViewMilestone={(m) => pushNav('milestone', m)} />
         )}
+        {tab === 'bugs' && (
+          <BugsTab bugs={bugs} projectId={projectId} sprints={sprints}
+            testRuns={runs} testCases={cases}
+            canEdit={canEditCases(myRole)} onRefresh={load} onViewBug={setDrawerBug} />
+        )}
       </div>
+
+      {/* Bug detail drawer */}
+      {drawerBug && (() => {
+        const sprint = sprints.find(s => s.id === drawerBug.sprint_id)
+        const run = runs.find(r => r.id === drawerBug.test_run_id)
+        const tc = cases.find(c => c.id === drawerBug.test_case_id)
+        const sc = {critical:{bg:'#fef2f2',color:'#b91c1c'},high:{bg:'#fff7ed',color:'#c2410c'},medium:{bg:'#fffbeb',color:'#d97706'},low:{bg:'#f0fdf4',color:'#15803d'}}[drawerBug.severity]
+        const stc = {open:{bg:'#fef2f2',color:'#dc2626'},in_progress:{bg:'#eff6ff',color:'#2563eb'},resolved:{bg:'#f0fdf4',color:'#15803d'},closed:{bg:'#f3f4f6',color:'#374151'},wont_fix:{bg:'#faf5ff',color:'#7c3aed'}}[drawerBug.status]
+        const imgs = (drawerBug.attachments||[]).filter(u => !u.match(/\.(mp4|webm|mov)$/i))
+        const vids = (drawerBug.attachments||[]).filter(u => u.match(/\.(mp4|webm|mov)$/i))
+        return (
+          <GlobalDrawer title={drawerBug.title} onClose={() => setDrawerBug(null)}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+              <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{drawerBug.severity}</span>
+              <span style={{ background: stc.bg, color: stc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{drawerBug.status.replace('_',' ')}</span>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(drawerBug.created_at).toLocaleDateString()}</span>
+            </div>
+            <GDRow label="Sprint" value={sprint?.name} />
+            <GDRow label="Test run" value={run?.name} />
+            <GDRow label="Test case" value={tc?.title} />
+            <GDRow label="Description" value={drawerBug.description} />
+            <GDRow label="Steps to reproduce" value={drawerBug.steps ? <pre style={{ margin:0, fontFamily:'inherit', whiteSpace:'pre-wrap', fontSize:13 }}>{drawerBug.steps}</pre> : null} />
+            <GDRow label="Expected result" value={drawerBug.expected_result} />
+            <GDRow label="Actual result" value={drawerBug.actual_result} />
+            {imgs.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ margin:'0 0 8px', fontSize:11, fontWeight:600, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em' }}>Images ({imgs.length})</p>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:8 }}>
+                  {imgs.map((url,i) => (
+                    <a key={i} href={url} target="_blank" rel="noreferrer">
+                      <img src={url} alt={`attachment-${i+1}`} style={{ width:'100%', height:90, objectFit:'cover', borderRadius:6, border:'1px solid #e5e7eb', display:'block' }} />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            {vids.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ margin:'0 0 8px', fontSize:11, fontWeight:600, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em' }}>Videos ({vids.length})</p>
+                {vids.map((url,i) => (
+                  <video key={i} src={url} controls style={{ width:'100%', borderRadius:6, marginBottom:6 }} />
+                ))}
+              </div>
+            )}
+          </GlobalDrawer>
+        )
+      })()}
 
       {/* ── Drill-down Detail Panel ── */}
       {navStack.length > 0 && <DrillDown
