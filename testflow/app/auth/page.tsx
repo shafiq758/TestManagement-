@@ -188,6 +188,12 @@ export default function AuthPage() {
     if (data.user?.email === SUPER_ADMIN_EMAIL) { router.replace('/superadmin'); return }
 
     if (!data.user?.email_confirmed_at) {
+    // Check if invited user with temp password — must change FIRST
+   if (data.user?.user_metadata?.temp_password === true) {
+     setLoading(false)
+     setMode('force_change')
+     return
+    }   
       setError('Please verify your email first.')
       await sb.auth.signOut()
       setLoading(false)
