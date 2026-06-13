@@ -13,6 +13,8 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false)
   const [confirmPassword, setConfirmPassword] = useState('')
   const [verifySent, setVerifySent] = useState(false)
+  const [otp, setOtp] = useState(['', '', '', '', '', ''])
+  const [verifying, setVerifying] = useState(false)
   const [passwordStrength, setPasswordStrength] = useState<'weak'|'fair'|'strong'|''>('')
 
   const checkStrength = (p: string) => {
@@ -48,19 +50,13 @@ export default function AuthPage() {
     if (mode === 'signup') {
       const { data, error: e } = await sb.auth.signUp({
         email, password,
-        options: {
-          data: { name },
-          emailRedirectTo: `${window.location.origin}/auth/verify`,
-        }
+        options: { data: { name } }
       })
       if (e) { setError(e.message); setLoading(false); return }
-      // If email confirmation is required
-      if (data.user && !data.session) {
-        setVerifySent(true)
-        setLoading(false)
-        return
-      }
-      router.replace('/dashboard')
+      // Send OTP for email verification
+      await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
+      setVerifySent(true)
+      setLoading(false)
     } else {
       const { data, error: e } = await sb.auth.signInWithPassword({ email, password })
       if (e) { setError(e.message); setLoading(false); return }
@@ -81,28 +77,95 @@ export default function AuthPage() {
 
   const resendVerification = async () => {
     const sb = createClient()
-    await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: `${window.location.origin}/auth/verify` } })
+    await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
     setError('')
-    setVerifySent(true)
+    setOtp(['', '', '', '', '', ''])
+  }
+
+  const verifyOtp = async () => {
+    const code = otp.join('')
+    if (code.length !== 6) { setError('Please enter the full 6-digit code.'); return }
+    setVerifying(true)
+    const sb = createClient()
+    const { error: e } = await sb.auth.verifyOtp({ email, token: code, type: 'email' })
+    if (e) { setError('Invalid or expired code. Please try again.'); setVerifying(false); return }
+    router.replace('/dashboard')
+  }
+
+  const handleOtpInput = (index: number, value: string) => {
+    if (!/^[0-9]*$/.test(value)) return
+    const newOtp = [...otp]
+    newOtp[index] = value.slice(-1)
+    setOtp(newOtp)
+    // Auto-focus next input
+    if (value && index < 5) {
+      const next = document.getElementById(`otp-${index + 1}`)
+      next?.focus()
+    }
+  }
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      const prev = document.getElementById(`otp-${index - 1}`)
+      prev?.focus()
+    }
   }
 
   if (verifySent) {
     return (
       <div style={s.page}>
         <div style={s.card}>
-          <div style={{ textAlign: 'center', marginBottom: 20 }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📧</div>
-            <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 600 }}>Check your email</h2>
-            <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 16px' }}>
-              We sent a verification link to <strong>{email}</strong>. Click it to activate your account.
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <rect x="2" y="2" width="7" height="7" rx="1.5" fill="#111"/>
+                <rect x="11" y="2" width="7" height="7" rx="1.5" fill="#111" opacity=".3"/>
+                <rect x="2" y="11" width="7" height="7" rx="1.5" fill="#111" opacity=".3"/>
+                <rect x="11" y="11" width="7" height="7" rx="1.5" fill="#111" opacity=".5"/>
+              </svg>
+              <span style={{ fontWeight: 600, fontSize: 16 }}>TestFlow</span>
+            </div>
+            <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 600 }}>Enter verification code</h2>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 20px' }}>
+              We sent a 6-digit code to <strong>{email}</strong>
             </p>
-            <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 16px' }}>
-              Didn't receive it?{' '}
-              <button onClick={resendVerification} style={s.link}>Resend email</button>
-            </p>
-            <button onClick={() => { setVerifySent(false); setMode('login') }} style={s.link}>
-              Back to sign in
+
+            {error && <div style={s.error}>{error}</div>}
+
+            {/* OTP boxes */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 20 }}>
+              {otp.map((digit, i) => (
+                <input
+                  key={i}
+                  id={`otp-${i}`}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={e => handleOtpInput(i, e.target.value)}
+                  onKeyDown={e => handleOtpKeyDown(i, e)}
+                  autoFocus={i === 0}
+                  style={{
+                    width: 44, height: 52, textAlign: 'center', fontSize: 22, fontWeight: 600,
+                    border: `2px solid ${digit ? '#111' : '#e5e7eb'}`,
+                    borderRadius: 8, outline: 'none', background: '#fff',
+                    color: '#111', transition: 'border-color 0.15s',
+                  }}
+                />
+              ))}
+            </div>
+
+            <button onClick={verifyOtp} disabled={verifying || otp.join('').length !== 6}
+              style={{ ...s.btn, opacity: (verifying || otp.join('').length !== 6) ? 0.5 : 1, marginBottom: 14 }}>
+              {verifying ? 'Verifying…' : 'Verify email'}
             </button>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+              <button onClick={resendVerification} style={s.link}>Resend code</button>
+              <button onClick={() => { setVerifySent(false); setMode('login'); setOtp(['','','','','','']) }} style={{ ...s.link, color: '#9ca3af' }}>
+                Back to sign in
+              </button>
+            </div>
           </div>
         </div>
       </div>
