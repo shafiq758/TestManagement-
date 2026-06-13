@@ -53,6 +53,7 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
   const [expandedSprints, setExpandedSprints] = useState<Record<string, boolean>>({})
   const [viewingSprint, setViewingSprint] = useState<Sprint | null>(null)
   const [viewingPlan, setViewingPlan] = useState<TestPlan | null>(null)
+  const [viewingPlanCase, setViewingPlanCase] = useState<any | null>(null)
 
   const [sprintForm, setSprintForm] = useState({ name: '', goal: '', status: 'planned' as SprintStatus, start_date: '', end_date: '', milestone_id: '' })
   const [planForm, setPlanForm] = useState({ name: '', description: '', case_ids: [] as string[] })
@@ -300,10 +301,14 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
                 <div style={{ marginBottom: 16 }}>
                   <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Test cases ({planCasesLocal.length})</p>
                   {planCasesLocal.map((tc, i) => (
-                    <div key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
+                    <div key={tc.id} onClick={() => setViewingPlanCase(tc)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', cursor: 'pointer', borderRadius: 6 }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#f9fafb'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
                       <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0,5).toUpperCase()}</span>
-                      <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+                      <span style={{ fontSize: 13, flex: 1, textDecoration: 'underline', textDecorationColor: '#d1d5db' }}>{tc.title}</span>
                       <span style={{ fontSize: 11, background: tc.priority === 'high' ? '#fef2f2' : tc.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: tc.priority === 'high' ? '#dc2626' : tc.priority === 'medium' ? '#d97706' : '#16a34a', padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
                     </div>
                   ))}
                   {planCasesLocal.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No test cases in this plan.</p>}
@@ -317,6 +322,48 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
           </div>
         )
       })()}
+
+      {/* Test Case Detail from Plan */}
+      {viewingPlanCase && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex' }}>
+          <div style={{ flex: 1, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingPlanCase(null)} />
+          <div style={{ width: 440, background: '#fff', height: '100%', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button onClick={() => setViewingPlanCase(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', fontFamily: 'inherit' }}>← Back</button>
+                <span style={{ color: '#d1d5db' }}>|</span>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>{viewingPlanCase.title}</span>
+              </div>
+              <button onClick={() => setViewingPlanCase(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af' }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+                <span style={{ fontSize: 11, background: viewingPlanCase.priority === 'high' ? '#fef2f2' : viewingPlanCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: viewingPlanCase.priority === 'high' ? '#dc2626' : viewingPlanCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{viewingPlanCase.priority}</span>
+                <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{viewingPlanCase.type}</span>
+                <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{viewingPlanCase.id.slice(0,5).toUpperCase()}</span>
+              </div>
+              {viewingPlanCase.description && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Description</p>
+                  <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>{viewingPlanCase.description}</p>
+                </div>
+              )}
+              {viewingPlanCase.steps && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Steps to reproduce</p>
+                  <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13, color: '#374151' }}>{viewingPlanCase.steps}</pre>
+                </div>
+              )}
+              {viewingPlanCase.expected_result && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Expected result</p>
+                  <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>{viewingPlanCase.expected_result}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sprint Modal */}
       {showSprintModal && (

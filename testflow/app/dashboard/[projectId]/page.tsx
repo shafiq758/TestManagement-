@@ -550,10 +550,14 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
                 const st = vResults[tc.id] || 'untested'
                 const stColors: Record<string, {bg: string; color: string}> = { pass: {bg:'#dcfce7',color:'#15803d'}, fail: {bg:'#fee2e2',color:'#dc2626'}, skip: {bg:'#fef9c3',color:'#ca8a04'}, untested: {bg:'#f3f4f6',color:'#6b7280'} }
                 return (
-                  <div key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
+                  <div key={tc.id} onClick={() => setViewingRunCase({...tc, sectionName: tc.sectionName})}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', cursor: 'pointer', borderRadius: 6 }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#f9fafb'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
                     <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 48 }}>TC-{tc.id.slice(0,5).toUpperCase()}</span>
-                    <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+                    <span style={{ fontSize: 13, flex: 1, textDecoration: 'underline', textDecorationColor: '#d1d5db' }}>{tc.title}</span>
                     <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: stColors[st].bg, color: stColors[st].color }}>{st}</span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
                   </div>
                 )
               })}
