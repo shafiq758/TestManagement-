@@ -11,12 +11,37 @@ export default function AuthPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [verifySent, setVerifySent] = useState(false)
+  const [passwordStrength, setPasswordStrength] = useState<'weak'|'fair'|'strong'|''>('')
+
+  const checkStrength = (p: string) => {
+    if (!p) { setPasswordStrength(''); return }
+    const hasUpper = /[A-Z]/.test(p)
+    const hasLower = /[a-z]/.test(p)
+    const hasNumber = /[0-9]/.test(p)
+    const hasSpecial = /[^A-Za-z0-9]/.test(p)
+    const score = [hasUpper, hasLower, hasNumber, hasSpecial, p.length >= 8].filter(Boolean).length
+    setPasswordStrength(score <= 2 ? 'weak' : score <= 3 ? 'fair' : 'strong')
+  }
+
+  const validatePassword = (p: string): string => {
+    if (p.length < 8) return 'Password must be at least 8 characters.'
+    if (!/[A-Z]/.test(p)) return 'Password must contain at least one uppercase letter.'
+    if (!/[a-z]/.test(p)) return 'Password must contain at least one lowercase letter.'
+    if (!/[0-9]/.test(p)) return 'Password must contain at least one number.'
+    return ''
+  }
 
   const handle = async () => {
     setError('')
     if (!email || !password) { setError('Email and password are required.'); return }
     if (mode === 'signup' && !name) { setError('Name is required.'); return }
+    if (mode === 'signup') {
+      const pwError = validatePassword(password)
+      if (pwError) { setError(pwError); return }
+      if (password !== confirmPassword) { setError('Passwords do not match.'); return }
+    }
     setLoading(true)
     const sb = createClient()
 
@@ -111,9 +136,36 @@ export default function AuthPage() {
           <Input value={email} onChange={setEmail} placeholder="you@example.com" type="email" />
         </Field>
         <Field label="Password">
-          <Input value={password} onChange={setPassword} placeholder="Min. 8 characters" type="password"
+          <Input value={password} onChange={(v: string) => { setPassword(v); if (mode === 'signup') checkStrength(v) }}
+            placeholder="Min. 8 characters" type="password"
             onKeyDown={(e: any) => e.key === 'Enter' && handle()} />
+          {mode === 'signup' && passwordStrength && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+                {(['weak','fair','strong'] as const).map((level, i) => (
+                  <div key={level} style={{
+                    flex: 1, height: 3, borderRadius: 2,
+                    background: passwordStrength === 'weak' && i === 0 ? '#ef4444'
+                      : passwordStrength === 'fair' && i <= 1 ? '#f59e0b'
+                      : passwordStrength === 'strong' && i <= 2 ? '#16a34a'
+                      : '#e5e7eb'
+                  }} />
+                ))}
+              </div>
+              <p style={{ margin: 0, fontSize: 11, color: passwordStrength === 'weak' ? '#ef4444' : passwordStrength === 'fair' ? '#d97706' : '#16a34a' }}>
+                {passwordStrength === 'weak' ? 'Weak — add uppercase, numbers, symbols'
+                  : passwordStrength === 'fair' ? 'Fair — getting stronger'
+                  : 'Strong password ✓'}
+              </p>
+            </div>
+          )}
         </Field>
+        {mode === 'signup' && (
+          <Field label="Confirm password">
+            <Input value={confirmPassword} onChange={setConfirmPassword} placeholder="Re-enter password" type="password"
+              onKeyDown={(e: any) => e.key === 'Enter' && handle()} />
+          </Field>
+        )}
 
         <button style={{ ...s.btn, opacity: loading ? 0.6 : 1 }} onClick={handle} disabled={loading}>
           {loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
@@ -121,7 +173,7 @@ export default function AuthPage() {
 
         <p style={s.toggle}>
           {mode === 'login' ? 'No account? ' : 'Already have one? '}
-          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError('') }} style={s.link}>
+          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); setConfirmPassword(''); setPasswordStrength('') }} style={s.link}>
             {mode === 'login' ? 'Sign up' : 'Sign in'}
           </button>
         </p>
