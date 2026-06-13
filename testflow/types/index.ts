@@ -59,3 +59,40 @@ export interface TestRun {
   results: Record<string, RunStatus>
   created_at: string
 }
+
+// ── Batch 1: Sprints, Test Plans, Milestones ──────────────────
+
+export type SprintStatus = 'planned' | 'active' | 'completed'
+export type MilestoneStatus = 'open' | 'in_progress' | 'closed'
+
+export interface Milestone {
+  id: string
+  name: string
+  description: string
+  project_id: string
+  status: MilestoneStatus
+  due_date: string | null
+  created_at: string
+}
+
+export interface Sprint {
+  id: string
+  name: string
+  project_id: string
+  milestone_id: string | null
+  status: SprintStatus
+  start_date: string | null
+  end_date: string | null
+  goal: string
+  created_at: string
+}
+
+export interface TestPlan {
+  id: string
+  name: string
+  description: string
+  sprint_id: string
+  project_id: string
+  case_ids: string[]
+  created_at: string
+}

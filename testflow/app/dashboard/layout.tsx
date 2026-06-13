@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useInactivity } from '@/lib/useInactivity'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
@@ -91,6 +92,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.replace('/auth')
   }
 
+  const { showWarning, secondsLeft, reset } = useInactivity(logout)
+
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
       <p style={{ color: '#9ca3af', fontSize: 14 }}>Loading…</p>
@@ -103,7 +106,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const rc = ROLE_COLORS[myRole]
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <>
+    {showWarning && (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999, background: '#f59e0b', color: '#111', padding: '10px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13, fontWeight: 500 }}>
+        <span>⚠️ You've been inactive for 15 minutes. You'll be logged out in {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, '0')}.</span>
+        <button onClick={reset} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+          Stay logged in
+        </button>
+      </div>
+    )}
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', marginTop: showWarning ? 40 : 0 }}>
       {/* Sidebar */}
       <div style={sidebarStyle}>
         <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid #e5e7eb' }}>
@@ -211,6 +223,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {children}
       </div>
     </div>
+    </>
   )
 }
 

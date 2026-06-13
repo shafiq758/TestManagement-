@@ -113,7 +113,7 @@ export default function AuthPage() {
     // Send OTP
     await sb.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false }
+      options: { shouldCreateUser: false, emailRedirectTo: undefined }
     })
 
     setLoading(false)
@@ -165,7 +165,7 @@ export default function AuthPage() {
     setError(''); setInfo('')
     await sb.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false }
+      options: { shouldCreateUser: false, emailRedirectTo: undefined }
     })
     resetOtp()
     setAttemptsLeft(MAX_ATTEMPTS)
@@ -210,7 +210,7 @@ export default function AuthPage() {
     await sb.auth.signOut()
     await sb.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false }
+      options: { shouldCreateUser: false, emailRedirectTo: undefined }
     })
     setLoading(false)
     resetOtp()
@@ -231,7 +231,7 @@ export default function AuthPage() {
     // Always send same message — silently send OTP only if user exists
     await sb.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false }
+      options: { shouldCreateUser: false, emailRedirectTo: undefined }
     })
 
     setLoading(false)
@@ -284,7 +284,7 @@ export default function AuthPage() {
     setError(''); setInfo('')
     await sb.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false }
+      options: { shouldCreateUser: false, emailRedirectTo: undefined }
     })
     resetOtp()
     setAttemptsLeft(MAX_ATTEMPTS)
@@ -339,7 +339,7 @@ export default function AuthPage() {
     setError(''); setInfo('')
     await sb.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false }
+      options: { shouldCreateUser: false, emailRedirectTo: undefined }
     })
     resetOtp()
     setAttemptsLeft(MAX_ATTEMPTS)

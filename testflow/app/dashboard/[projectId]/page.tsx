@@ -2,7 +2,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { canEditCases, canExecuteRuns } from '@/lib/roles'
+import { canEditCases, canExecuteRuns, canCreateProjects } from '@/lib/roles'
+import MilestonesTab from '@/components/MilestonesTab'
+import SprintsTab from '@/components/SprintsTab'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
 // ─── UI primitives ────────────────────────────────────────────────────────────
@@ -97,9 +99,12 @@ export default function ProjectPage() {
   const [sections, setSections] = useState<Section[]>([])
   const [cases, setCases] = useState<TestCase[]>([])
   const [runs, setRuns] = useState<TestRun[]>([])
-  const [tab, setTab] = useState<'cases' | 'runs'>('cases')
+  const [tab, setTab] = useState<'cases' | 'runs' | 'sprints' | 'milestones'>('cases')
   const [loading, setLoading] = useState(true)
   const [myRole, setMyRole] = useState<WorkspaceRole>('viewer')
+  const [milestones, setMilestones] = useState<any[]>([])
+  const [sprints, setSprints] = useState<any[]>([])
+  const [testPlans, setTestPlans] = useState<any[]>([])
 
   const sb = createClient()
 
@@ -111,13 +116,17 @@ export default function ProjectPage() {
       const { data: mem } = await sb.from('workspace_members').select('role').eq('user_id', session.user.id).eq('status', 'active').single()
       if (mem) setMyRole(mem.role)
     }
-    const [{ data: proj }, { data: secs }, { data: tcs }, { data: trs }] = await Promise.all([
+    const [{ data: proj }, { data: secs }, { data: tcs }, { data: trs }, { data: mils }, { data: sprs }, { data: plans }] = await Promise.all([
       sb.from('projects').select('*').eq('id', projectId).single(),
       sb.from('sections').select('*').eq('project_id', projectId).order('created_at'),
       sb.from('test_cases').select('*').eq('project_id', projectId).order('created_at'),
       sb.from('test_runs').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('milestones').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('sprints').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('test_plans').select('*').eq('project_id', projectId).order('created_at'),
     ])
     setProject(proj); setSections(secs || []); setCases(tcs || []); setRuns(trs || [])
+    setMilestones(mils || []); setSprints(sprs || []); setTestPlans(plans || [])
     setLoading(false)
   }, [projectId])
 
@@ -132,14 +141,14 @@ export default function ProjectPage() {
       <div style={{ padding: '18px 26px 0', borderBottom: '1px solid #e5e7eb' }}>
         <h1 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 600 }}>{project.name}</h1>
         <div style={{ display: 'flex', gap: 0 }}>
-          {(['cases', 'runs'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} style={{
+          {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones']] as const).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t as any)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
               fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 600 : 400,
               color: tab === t ? '#111' : '#6b7280',
               padding: '8px 16px', borderBottom: tab === t ? '2px solid #111' : '2px solid transparent',
-              marginBottom: -1, textTransform: 'capitalize',
-            }}>{t === 'cases' ? 'Test cases' : 'Test runs'}</button>
+              marginBottom: -1,
+            }}>{label}</button>
           ))}
         </div>
       </div>
@@ -152,6 +161,15 @@ export default function ProjectPage() {
         {tab === 'runs' && (
           <RunsTab runs={runs} cases={cases} sections={sections} projectId={projectId}
             myRole={myRole} onRefresh={load} />
+        )}
+        {tab === 'sprints' && (
+          <SprintsTab sprints={sprints} milestones={milestones} testPlans={testPlans}
+            cases={cases} sections={sections} projectId={projectId}
+            canEdit={canEditCases(myRole)} onRefresh={load} />
+        )}
+        {tab === 'milestones' && (
+          <MilestonesTab milestones={milestones} projectId={projectId}
+            canEdit={canEditCases(myRole)} onRefresh={load} />
         )}
       </div>
     </div>
