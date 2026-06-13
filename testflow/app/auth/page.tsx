@@ -2,8 +2,9 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import { generateToken, getLocalToken, setLocalToken } from '@/lib/browserTrust'
 
-type Mode = 'login' | 'signup' | 'forgot' | 'verify_signup' | 'verify_reset' | 'new_password' | 'blocked' | 'contact_admin'
+type Mode = 'login' | 'signup' | 'forgot' | 'verify_signup' | 'verify_login' | 'verify_reset' | 'new_password' | 'blocked' | 'contact_admin'
 
 const SUPER_ADMIN_EMAIL = 'muhamad.shafiqurrehman@gmail.com'
 const MAX_ATTEMPTS = 3
@@ -147,6 +148,16 @@ export default function AuthPage() {
     }
 
     await clearAttempts(email.trim().toLowerCase())
+    // Save trusted browser token
+    const token = generateToken()
+    setLocalToken(token)
+    const { data: { session } } = await sb.auth.getSession()
+    if (session?.user) {
+      await sb.from('trusted_browsers').upsert(
+        { user_id: session.user.id, token },
+        { onConflict: 'user_id' }
+      )
+    }
     router.replace('/dashboard')
   }
 
@@ -183,7 +194,28 @@ export default function AuthPage() {
       return
     }
 
-    router.replace('/dashboard')
+    // Check trusted browser
+    const localToken = getLocalToken()
+    if (localToken) {
+      const { data: trust } = await sb.from('trusted_browsers')
+        .select('token').eq('user_id', data.user.id).single()
+      if (trust?.token === localToken) {
+        // Trusted browser — skip OTP
+        router.replace('/dashboard')
+        return
+      }
+    }
+
+    // Untrusted browser — require OTP verification
+    await sb.auth.signOut()
+    await sb.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: false }
+    })
+    setLoading(false)
+    resetOtp()
+    setAttemptsLeft(MAX_ATTEMPTS)
+    setMode('verify_login')
   }
 
   // ── FORGOT PASSWORD ──────────────────────────────────────────
@@ -234,11 +266,76 @@ export default function AuthPage() {
     }
 
     await clearAttempts(email.trim().toLowerCase())
+    // Save trusted browser token
+    const token = generateToken()
+    setLocalToken(token)
+    const { data: { session } } = await sb.auth.getSession()
+    if (session?.user) {
+      await sb.from('trusted_browsers').upsert(
+        { user_id: session.user.id, token },
+        { onConflict: 'user_id' }
+      )
+    }
     setLoading(false)
     setMode('new_password')
   }
 
   const resendResetOtp = async () => {
+    setError(''); setInfo('')
+    await sb.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: false }
+    })
+    resetOtp()
+    setAttemptsLeft(MAX_ATTEMPTS)
+    setInfo('A new code has been sent.')
+  }
+
+  // ── VERIFY LOGIN OTP (new browser) ──────────────────────────
+  const handleVerifyLogin = async () => {
+    setError('')
+    const code = otp.join('')
+    if (code.length !== 6) { setError('Please enter the full 6-digit code.'); return }
+    setLoading(true)
+
+    // Re-sign in first to get session back
+    const { data: signInData, error: signInErr } = await sb.auth.signInWithPassword({
+      email: email.trim().toLowerCase(), password
+    })
+    if (signInErr) { setError('Session expired. Please sign in again.'); setMode('login'); setLoading(false); return }
+
+    const { error: e } = await sb.auth.verifyOtp({
+      email: email.trim().toLowerCase(), token: code, type: 'email'
+    })
+
+    if (e) {
+      const left = await recordFailedAttempt(email.trim().toLowerCase())
+      if (left <= 0) {
+        await sb.auth.signOut()
+        setMode('blocked')
+      } else {
+        setAttemptsLeft(left)
+        setError(`Invalid or expired code. ${left} attempt${left !== 1 ? 's' : ''} remaining.`)
+        resetOtp()
+      }
+      setLoading(false)
+      return
+    }
+
+    await clearAttempts(email.trim().toLowerCase())
+    // Trust this browser — replaces any previous trusted browser
+    const token = generateToken()
+    setLocalToken(token)
+    if (signInData.user) {
+      await sb.from('trusted_browsers').upsert(
+        { user_id: signInData.user.id, token },
+        { onConflict: 'user_id' }
+      )
+    }
+    router.replace('/dashboard')
+  }
+
+  const resendLoginOtp = async () => {
     setError(''); setInfo('')
     await sb.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
@@ -331,6 +428,28 @@ export default function AuthPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 12 }}>
             <button onClick={resendSignupOtp} style={s.link}>Resend code</button>
             <button onClick={() => { setMode('signup'); setError(''); setInfo(''); resetOtp() }} style={{ ...s.link, color: '#9ca3af' }}>Back</button>
+          </div>
+        </>}
+
+        {/* VERIFY LOGIN - new browser */}
+        {mode === 'verify_login' && <>
+          <h2 style={s.title}>Verify new browser</h2>
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 4px' }}>This browser isn't recognized. A 6-digit code was sent to</p>
+          <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 4px' }}>{email}</p>
+          <div style={{ display: 'flex', gap: 12, margin: '4px 0 20px' }}>
+            <p style={{ fontSize: 11, color: '#ef4444', margin: 0 }}>⏱ Expires in 5 minutes</p>
+            <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>• {attemptsLeft} attempt{attemptsLeft !== 1 ? 's' : ''} remaining</p>
+          </div>
+          <OtpInput otp={otp} onInput={handleOtpInput} onKeyDown={handleOtpKeyDown} />
+          <Btn label={loading ? 'Verifying…' : 'Verify browser'} onClick={handleVerifyLogin} disabled={loading || otp.join('').length !== 6} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, fontSize: 12 }}>
+            <button onClick={resendLoginOtp} style={s.link}>Resend code</button>
+            <button onClick={() => { setMode('login'); setError(''); setInfo(''); resetOtp() }} style={{ ...s.link, color: '#9ca3af' }}>Back</button>
+          </div>
+          <div style={{ marginTop: 16, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '10px 12px' }}>
+            <p style={{ margin: 0, fontSize: 11, color: '#6b7280' }}>
+              🔒 Verifying will trust this browser. Your previous trusted browser will be removed.
+            </p>
           </div>
         </>}
 
