@@ -38,8 +38,8 @@ function Field({ label, children }: any) {
   )
 }
 
-export default function MilestonesTab({ milestones, projectId, onRefresh, canEdit }: {
-  milestones: Milestone[]; projectId: string; onRefresh: () => void; canEdit: boolean
+export default function MilestonesTab({ milestones, projectId, onRefresh, canEdit, onViewMilestone }: {
+  milestones: Milestone[]; projectId: string; onRefresh: () => void; canEdit: boolean; onViewMilestone: (m: Milestone) => void
 }) {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Milestone | null>(null)
@@ -93,7 +93,7 @@ export default function MilestonesTab({ milestones, projectId, onRefresh, canEdi
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>{m.name}</span>
+                  <button onClick={() => onViewMilestone(m)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600, fontSize: 14, color: '#111', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{m.name}</button>
                   <Badge status={m.status} />
                 </div>
                 {m.description && <p style={{ margin: '0 0 4px', fontSize: 13, color: '#6b7280' }}>{m.description}</p>}

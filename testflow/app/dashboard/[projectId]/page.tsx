@@ -167,6 +167,7 @@ export default function ProjectPage() {
   const [sprints, setSprints] = useState<any[]>([])
   const [testPlans, setTestPlans] = useState<any[]>([])
   // Global drawer state — rendered at top level to avoid overflow clipping
+  const [drawerMilestone, setDrawerMilestone] = useState<any | null>(null)
   const [drawerCase, setDrawerCase] = useState<any | null>(null)
   const [drawerRun, setDrawerRun] = useState<any | null>(null)
   const [drawerRunCase, setDrawerRunCase] = useState<any | null>(null)
@@ -238,11 +239,53 @@ export default function ProjectPage() {
         )}
         {tab === 'milestones' && (
           <MilestonesTab milestones={milestones} projectId={projectId}
-            canEdit={canEditCases(myRole)} onRefresh={load} />
+            canEdit={canEditCases(myRole)} onRefresh={load} onViewMilestone={setDrawerMilestone} />
         )}
       </div>
 
       {/* ── Global Drawers — rendered at top level, never clipped ── */}
+
+      {/* Milestone detail */}
+      {drawerMilestone && (
+        <GlobalDrawer title={drawerMilestone.name} onClose={() => setDrawerMilestone(null)}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            {(() => {
+              const cfg: Record<string, {bg:string;color:string;label:string}> = {
+                open: {bg:'#f3f4f6',color:'#374151',label:'Open'},
+                in_progress: {bg:'#dbeafe',color:'#1e40af',label:'In Progress'},
+                closed: {bg:'#d1fae5',color:'#065f46',label:'Closed'},
+              }
+              const c = cfg[drawerMilestone.status]
+              return <span style={{ background: c.bg, color: c.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{c.label}</span>
+            })()}
+          </div>
+          <GDRow label="Description" value={drawerMilestone.description} />
+          <GDRow label="Due date" value={drawerMilestone.due_date ? new Date(drawerMilestone.due_date).toLocaleDateString() : null} />
+          <GDRow label="Created" value={new Date(drawerMilestone.created_at).toLocaleDateString()} />
+          {/* Linked sprints */}
+          {(() => {
+            const linked = sprints.filter(s => s.milestone_id === drawerMilestone.id)
+            if (linked.length === 0) return null
+            return (
+              <div style={{ marginBottom: 16 }}>
+                <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Sprints ({linked.length})</p>
+                {linked.map((s, i) => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
+                    <span style={{ fontSize: 13, flex: 1 }}>🏃 {s.name}</span>
+                    <span style={{ fontSize: 11, background: s.status === 'active' ? '#dcfce7' : s.status === 'completed' ? '#dbeafe' : '#f3f4f6', color: s.status === 'active' ? '#15803d' : s.status === 'completed' ? '#1e40af' : '#374151', padding: '1px 7px', borderRadius: 4, fontWeight: 600 }}>{s.status}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
+          {canEditCases(myRole) && (
+            <button onClick={() => setDrawerMilestone(null)}
+              style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+              Close
+            </button>
+          )}
+        </GlobalDrawer>
+      )}
 
       {/* Test Case detail */}
       {drawerCase && (
