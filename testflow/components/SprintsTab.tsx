@@ -42,10 +42,11 @@ const inpStyle: React.CSSProperties = { width: '100%', border: '1px solid #d1d5d
 const btnStyle: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 13, background: '#fff', cursor: 'pointer' }
 const smBtn: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 10px', fontSize: 12, background: '#fff', cursor: 'pointer' }
 
-export default function SprintsTab({ sprints, milestones, testPlans, cases, sections, projectId, onRefresh, canEdit, onViewSprint, onViewPlan }: {
+export default function SprintsTab({ sprints, milestones, testPlans, cases, sections, projectId, onRefresh, canEdit, onViewSprint, onViewPlan, onViewCase, bugs }: {
   sprints: Sprint[]; milestones: Milestone[]; testPlans: TestPlan[]
   cases: TestCase[]; sections: Section[]; projectId: string; onRefresh: () => void; canEdit: boolean
   onViewSprint?: (s: Sprint) => void; onViewPlan?: (p: TestPlan) => void
+  onViewCase?: (tc: any, bugs: any[]) => void; bugs?: any[]
 }) {
   const [showSprintModal, setShowSprintModal] = useState(false)
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null)
@@ -54,7 +55,6 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
   const [expandedSprints, setExpandedSprints] = useState<Record<string, boolean>>({})
   const [viewingSprint, setViewingSprint] = useState<Sprint | null>(null)
   const [viewingPlan, setViewingPlan] = useState<TestPlan | null>(null)
-  const [viewingPlanCase, setViewingPlanCase] = useState<any | null>(null)
 
   const [sprintForm, setSprintForm] = useState({ name: '', goal: '', status: 'planned' as SprintStatus, start_date: '', end_date: '', milestone_id: '' })
   const [planForm, setPlanForm] = useState({ name: '', description: '', case_ids: [] as string[] })
@@ -302,7 +302,7 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
                 <div style={{ marginBottom: 16 }}>
                   <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Test cases ({planCasesLocal.length})</p>
                   {planCasesLocal.map((tc, i) => (
-                    <div key={tc.id} onClick={() => setViewingPlanCase(tc)}
+                    <div key={tc.id} onClick={() => onViewCase ? onViewCase(tc, bugs || []) : null}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', cursor: 'pointer', borderRadius: 6 }}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#f9fafb'}
                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
@@ -325,46 +325,6 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
       })()}
 
       {/* Test Case Detail from Plan */}
-      {viewingPlanCase && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 300 }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={() => setViewingPlanCase(null)} />
-          <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 440, background: '#fff', overflowY: 'auto', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button onClick={() => setViewingPlanCase(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', fontFamily: 'inherit' }}>← Back</button>
-                <span style={{ color: '#d1d5db' }}>|</span>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{viewingPlanCase.title}</span>
-              </div>
-              <button onClick={() => setViewingPlanCase(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af' }}>×</button>
-            </div>
-            <div style={{ padding: 20 }}>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-                <span style={{ fontSize: 11, background: viewingPlanCase.priority === 'high' ? '#fef2f2' : viewingPlanCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: viewingPlanCase.priority === 'high' ? '#dc2626' : viewingPlanCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{viewingPlanCase.priority}</span>
-                <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{viewingPlanCase.type}</span>
-                <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{viewingPlanCase.id.slice(0,5).toUpperCase()}</span>
-              </div>
-              {viewingPlanCase.description && (
-                <div style={{ marginBottom: 16 }}>
-                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Description</p>
-                  <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>{viewingPlanCase.description}</p>
-                </div>
-              )}
-              {viewingPlanCase.steps && (
-                <div style={{ marginBottom: 16 }}>
-                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Steps to reproduce</p>
-                  <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13, color: '#374151' }}>{viewingPlanCase.steps}</pre>
-                </div>
-              )}
-              {viewingPlanCase.expected_result && (
-                <div style={{ marginBottom: 16 }}>
-                  <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Expected result</p>
-                  <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>{viewingPlanCase.expected_result}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Sprint Modal */}
       {showSprintModal && (

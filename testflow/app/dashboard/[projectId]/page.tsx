@@ -251,7 +251,9 @@ export default function ProjectPage() {
             cases={cases} sections={sections} projectId={projectId}
             canEdit={canEditCases(myRole)} onRefresh={load}
             onViewSprint={(s) => pushNav('sprint', s)}
-            onViewPlan={(p) => pushNav('plan', p)} />
+            onViewPlan={(p) => pushNav('plan', p)}
+            onViewCase={(tc, bugsArr) => pushNav('case', tc, {bugs: bugsArr})}
+            bugs={bugs} />
         )}
         {tab === 'milestones' && (
           <MilestonesTab milestones={milestones} projectId={projectId}
