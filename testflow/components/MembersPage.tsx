@@ -60,7 +60,31 @@ export default function MembersPage({ workspaceId, currentRole, currentUserId, i
     })
 
     if (e) { setError(e.message); setInviting(false); return }
-    setSuccess(`Invite sent to ${inviteEmail.trim()}. They'll get access when they sign up.`)
+
+    // Get workspace name and current user info for the email
+    const { data: ws } = await sb.from('workspaces').select('name').eq('id', workspaceId).single()
+    const { data: { session } } = await sb.auth.getSession()
+    const inviterName = session?.user?.user_metadata?.name || session?.user?.email || 'An admin'
+
+    // Send invite email
+    try {
+      await fetch('/api/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invitedEmail: inviteEmail.trim().toLowerCase(),
+          inviterName,
+          workspaceName: ws?.name || 'TestFlow Workspace',
+          role: inviteRole,
+          appUrl: window.location.origin,
+        }),
+      })
+    } catch (emailErr) {
+      console.error('Email send failed:', emailErr)
+      // Don't block on email failure — invite is still saved
+    }
+
+    setSuccess(`Invite sent to ${inviteEmail.trim()}. They will receive an email with instructions.`)
     setInviteEmail('')
     setInviting(false)
     fetchMembers()
