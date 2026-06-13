@@ -75,6 +75,7 @@ export default function MembersPage({ workspaceId, currentRole, currentUserId, i
           invitedEmail: inviteEmail.trim().toLowerCase(),
           inviterName,
           workspaceName: ws?.name || 'TestFlow Workspace',
+          workspaceId,
           role: inviteRole,
           appUrl: window.location.origin,
         }),

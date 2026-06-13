@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { generateToken, getLocalToken, setLocalToken } from '@/lib/browserTrust'
 
-type Mode = 'login' | 'signup' | 'forgot' | 'verify_signup' | 'verify_login' | 'verify_reset' | 'new_password' | 'blocked' | 'contact_admin'
+type Mode = 'login' | 'signup' | 'forgot' | 'verify_signup' | 'verify_login' | 'verify_reset' | 'new_password' | 'force_change' | 'blocked' | 'contact_admin'
 
 const SUPER_ADMIN_EMAIL = 'muhamad.shafiqurrehman@gmail.com'
 const MAX_ATTEMPTS = 3
@@ -346,6 +346,35 @@ export default function AuthPage() {
     setInfo('A new code has been sent.')
   }
 
+  // ── FORCE PASSWORD CHANGE (invited users) ────────────────────
+  const handleForceChange = async () => {
+    setError('')
+    const pwErr = validatePassword(newPassword)
+    if (pwErr) { setError(pwErr); return }
+    if (newPassword !== confirmNewPassword) { setError('Passwords do not match.'); return }
+    setLoading(true)
+
+    // Update password
+    const { error: e } = await sb.auth.updateUser({ 
+      password: newPassword,
+      data: { temp_password: false } // clear the flag
+    })
+    if (e) { setError(e.message); setLoading(false); return }
+
+    // Now trust this browser
+    const token = generateToken()
+    setLocalToken(token)
+    const { data: { session } } = await sb.auth.getSession()
+    if (session?.user) {
+      await sb.from('trusted_browsers').upsert(
+        { user_id: session.user.id, token },
+        { onConflict: 'user_id' }
+      )
+    }
+
+    router.replace('/dashboard')
+  }
+
   // ── SET NEW PASSWORD ─────────────────────────────────────────
   const handleNewPassword = async () => {
     setError('')
@@ -490,6 +519,28 @@ export default function AuthPage() {
             <Inp value={confirmNewPassword} onChange={setConfirmNewPassword} placeholder="Re-enter new password" type="password" onKeyDown={(e: any) => e.key === 'Enter' && handleNewPassword()} />
           </Field>
           <Btn label={loading ? 'Updating…' : 'Update password'} onClick={handleNewPassword} disabled={loading} />
+        </>}
+
+        {/* FORCE PASSWORD CHANGE */}
+        {mode === 'force_change' && <>
+          <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontSize: 13, color: '#92400e' }}>
+            🔐 You're logging in for the first time. Please set a new password before continuing.
+          </div>
+          <h2 style={s.title}>Set your password</h2>
+          <Field label="New password">
+            <Inp value={newPassword} onChange={(v: string) => { setNewPassword(v); checkStrength(v) }} placeholder="Min. 8 characters" type="password" autoFocus />
+            <StrengthBar strength={passwordStrength} />
+          </Field>
+          <Field label="Confirm new password">
+            <Inp value={confirmNewPassword} onChange={setConfirmNewPassword} placeholder="Re-enter new password" type="password"
+              onKeyDown={(e: any) => e.key === 'Enter' && handleForceChange()} />
+            {confirmNewPassword && newPassword && (
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: confirmNewPassword === newPassword ? '#16a34a' : '#ef4444' }}>
+                {confirmNewPassword === newPassword ? '✓ Passwords match' : '✗ Passwords do not match'}
+              </p>
+            )}
+          </Field>
+          <Btn label={loading ? 'Saving…' : 'Set password & continue'} onClick={handleForceChange} disabled={loading} />
         </>}
 
         {/* BLOCKED */}
