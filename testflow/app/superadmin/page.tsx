@@ -22,6 +22,9 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [unlockRequests, setUnlockRequests] = useState<any[]>([])
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([])
+  const [activeTab, setActiveTab] = useState<'workspaces' | 'blocked'>('workspaces')
   const sb = createClient()
 
   useEffect(() => {
@@ -52,6 +55,18 @@ export default function SuperAdminPage() {
       return { ...w, member_count: count || 0, owner_email: owner?.invited_email || '—' }
     }))
     setWorkspaces(enriched)
+    // Fetch unlock requests
+    const { data: requests } = await sb.from('unlock_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false })
+    setUnlockRequests(requests || [])
+    // Fetch blocked users
+    const { data: blocked } = await sb.from('otp_attempts').select('*').eq('blocked', true).order('blocked_at', { ascending: false })
+    setBlockedUsers(blocked || [])
+  }
+
+  const unlockUser = async (email: string) => {
+    await sb.from('otp_attempts').update({ blocked: false, attempts: 0, blocked_at: null }).eq('email', email)
+    await sb.from('unlock_requests').update({ status: 'resolved' }).eq('email', email)
+    fetchWorkspaces()
   }
 
   const deleteWorkspace = async (ws: WorkspaceRow) => {
@@ -122,7 +137,62 @@ export default function SuperAdminPage() {
           ))}
         </div>
 
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #e5e7eb', marginBottom: 20 }}>
+          {(['workspaces', 'blocked'] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              fontSize: 13, fontWeight: activeTab === t ? 600 : 400,
+              color: activeTab === t ? '#111' : '#6b7280',
+              padding: '8px 16px', borderBottom: activeTab === t ? '2px solid #111' : '2px solid transparent',
+              marginBottom: -1, textTransform: 'capitalize',
+            }}>
+              {t === 'workspaces' ? 'Workspaces' : `Blocked Users ${blockedUsers.length > 0 ? `(${blockedUsers.length})` : ''}`}
+            </button>
+          ))}
+        </div>
+
+        {/* Unlock requests banner */}
+        {unlockRequests.length > 0 && (
+          <div style={{ background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, color: '#92400e' }}>⚠️ {unlockRequests.length} pending unlock request{unlockRequests.length !== 1 ? 's' : ''}</span>
+            <button onClick={() => setActiveTab('blocked')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#92400e', fontWeight: 600, textDecoration: 'underline', fontFamily: 'inherit' }}>View</button>
+          </div>
+        )}
+
+        {/* Blocked users tab */}
+        {activeTab === 'blocked' && (
+          <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', marginBottom: 20 }}>
+            <div style={{ padding: '12px 18px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Blocked users</span>
+            </div>
+            {blockedUsers.length === 0 && <p style={{ padding: '20px 18px', fontSize: 13, color: '#9ca3af', margin: 0 }}>No blocked users.</p>}
+            {blockedUsers.map((u, i) => {
+              const req = unlockRequests.find(r => r.email === u.email)
+              return (
+                <div key={u.id} style={{ padding: '14px 18px', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: '0 0 3px', fontWeight: 500, fontSize: 14 }}>{u.email}</p>
+                    <p style={{ margin: '0 0 3px', fontSize: 12, color: '#9ca3af' }}>Blocked at {new Date(u.blocked_at).toLocaleString()} · {u.attempts} failed attempts</p>
+                    {req && (
+                      <div style={{ background: '#fef9c3', border: '1px solid #fde68a', borderRadius: 6, padding: '6px 10px', marginTop: 6 }}>
+                        <p style={{ margin: '0 0 2px', fontSize: 12, fontWeight: 500, color: '#92400e' }}>Unlock request:</p>
+                        <p style={{ margin: 0, fontSize: 12, color: '#92400e' }}>{req.message}</p>
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => unlockUser(u.email)}
+                    style={{ background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', flexShrink: 0 }}>
+                    Unlock
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         {/* Workspaces table */}
+        {activeTab === 'workspaces' && <>
         <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
           <div style={{ padding: '12px 18px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb', display: 'grid', gridTemplateColumns: '2fr 2fr 80px 100px', gap: 12 }}>
             {['Workspace', 'Owner', 'Members', ''].map(h => (
@@ -173,6 +243,7 @@ export default function SuperAdminPage() {
             ⚠️ Deleting a workspace permanently removes all projects, sections, test cases, test runs, and members inside it. This action cannot be undone.
           </p>
         </div>
+        </>}
       </div>
     </div>
   )

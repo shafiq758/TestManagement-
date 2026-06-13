@@ -196,9 +196,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </p>
             <span style={{ ...rc, fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 4, flexShrink: 0, marginLeft: 6 }}>{ROLE_LABELS[myRole]}</span>
           </div>
-          <button onClick={logout} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', padding: 0 }}>
-            Sign out
-          </button>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <Link href="/dashboard/settings" style={{ fontSize: 12, color: '#9ca3af', textDecoration: 'none' }}>Settings</Link>
+            <span style={{ color: '#e5e7eb' }}>·</span>
+            <button onClick={logout} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', padding: 0 }}>
+              Sign out
+            </button>
+          </div>
         </div>
       </div>
 
