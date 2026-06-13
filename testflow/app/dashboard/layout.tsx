@@ -26,7 +26,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (!data.session) { router.replace('/auth'); return }
       const u = data.session.user
       // Super admin has their own panel
-      if (u.email === 'muhammad.shafiqurrehman@gmail.com') {
+      if (u.email === 'muhamad.shafiqurrehman@gmail.com') {
         router.replace('/superadmin'); return
       }
       setUser(u)

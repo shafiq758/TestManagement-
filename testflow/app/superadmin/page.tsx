@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 
-const SUPER_ADMIN_EMAIL = 'muhammad.shafiqurrehman@gmail.com'
+const SUPER_ADMIN_EMAIL = 'muhamad.shafiqurrehman@gmail.com'
 
 interface WorkspaceRow {
   id: string

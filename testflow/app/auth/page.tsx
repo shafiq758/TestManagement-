@@ -39,6 +39,10 @@ export default function AuthPage() {
     } else {
       const { data, error: e } = await sb.auth.signInWithPassword({ email, password })
       if (e) { setError(e.message); setLoading(false); return }
+      // Redirect super admin
+      if (data.user?.email === 'muhamad.shafiqurrehman@gmail.com') {
+        router.replace('/superadmin'); return
+      }
       // Check if email is confirmed
       if (data.user && !data.user.email_confirmed_at) {
         setError('Please verify your email before signing in. Check your inbox.')

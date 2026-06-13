@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
-const SUPER_ADMIN_EMAIL = 'muhammad.shafiqurrehman@gmail.com'
+const SUPER_ADMIN_EMAIL = 'muhamad.shafiqurrehman@gmail.com'
 
 export default function Home() {
   const router = useRouter()
