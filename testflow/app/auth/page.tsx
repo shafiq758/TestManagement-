@@ -188,12 +188,6 @@ export default function AuthPage() {
     if (data.user?.email === SUPER_ADMIN_EMAIL) { router.replace('/superadmin'); return }
 
     if (!data.user?.email_confirmed_at) {
-    // Check if invited user with temp password — must change FIRST
-   if (data.user?.user_metadata?.temp_password === true) {
-     setLoading(false)
-     setMode('force_change')
-     return
-    }   
       setError('Please verify your email first.')
       await sb.auth.signOut()
       setLoading(false)
@@ -329,7 +323,7 @@ export default function AuthPage() {
     }
 
     await clearAttempts(email.trim().toLowerCase())
-    // Trust this browser — replaces any previous trusted browser
+    // Trust this browser
     const token = generateToken()
     setLocalToken(token)
     if (signInData.user) {
@@ -337,6 +331,12 @@ export default function AuthPage() {
         { user_id: signInData.user.id, token },
         { onConflict: 'user_id' }
       )
+    }
+    // Check if invited user who must change temp password first
+    if (signInData.user?.user_metadata?.temp_password === true) {
+      setLoading(false)
+      setMode('force_change')
+      return
     }
     router.replace('/dashboard')
   }
