@@ -2,7 +2,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus } from '@/types'
+import { canEditCases, canExecuteRuns } from '@/lib/roles'
+import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
 // ─── UI primitives ────────────────────────────────────────────────────────────
 
@@ -98,11 +99,18 @@ export default function ProjectPage() {
   const [runs, setRuns] = useState<TestRun[]>([])
   const [tab, setTab] = useState<'cases' | 'runs'>('cases')
   const [loading, setLoading] = useState(true)
+  const [myRole, setMyRole] = useState<WorkspaceRole>('viewer')
 
   const sb = createClient()
 
   const load = useCallback(async () => {
     setLoading(true)
+    // Get user role
+    const { data: { session } } = await sb.auth.getSession()
+    if (session) {
+      const { data: mem } = await sb.from('workspace_members').select('role').eq('user_id', session.user.id).eq('status', 'active').single()
+      if (mem) setMyRole(mem.role)
+    }
     const [{ data: proj }, { data: secs }, { data: tcs }, { data: trs }] = await Promise.all([
       sb.from('projects').select('*').eq('id', projectId).single(),
       sb.from('sections').select('*').eq('project_id', projectId).order('created_at'),
@@ -139,11 +147,11 @@ export default function ProjectPage() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
         {tab === 'cases' && (
           <CasesTab sections={sections} cases={cases} projectId={projectId}
-            onRefresh={load} />
+            myRole={myRole} onRefresh={load} />
         )}
         {tab === 'runs' && (
           <RunsTab runs={runs} cases={cases} sections={sections} projectId={projectId}
-            onRefresh={load} />
+            myRole={myRole} onRefresh={load} />
         )}
       </div>
     </div>
@@ -152,7 +160,7 @@ export default function ProjectPage() {
 
 // ─── Test Cases Tab ───────────────────────────────────────────────────────────
 
-function CasesTab({ sections, cases, projectId, onRefresh }: { sections: Section[]; cases: TestCase[]; projectId: string; onRefresh: () => void }) {
+function CasesTab({ sections, cases, projectId, myRole, onRefresh }: { sections: Section[]; cases: TestCase[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void }) {
   const [addingSection, setAddingSection] = useState(false)
   const [sectionName, setSectionName] = useState('')
   const [addingCaseTo, setAddingCaseTo] = useState<string | null>(null)
@@ -187,7 +195,7 @@ function CasesTab({ sections, cases, projectId, onRefresh }: { sections: Section
         <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
           {total} test case{total !== 1 ? 's' : ''} · {sections.length} section{sections.length !== 1 ? 's' : ''}
         </p>
-        <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>
+        {canEditCases(myRole) && <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>}
       </div>
 
       {addingSection && (
@@ -220,7 +228,7 @@ function CasesTab({ sections, cases, projectId, onRefresh }: { sections: Section
               </button>
               <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{section.name}</span>
               <span style={{ fontSize: 11, color: '#9ca3af' }}>{sectionCases.length} case{sectionCases.length !== 1 ? 's' : ''}</span>
-              <Btn sm onClick={() => setAddingCaseTo(section.id)}>+ Add case</Btn>
+              {canEditCases(myRole) && <Btn sm onClick={() => setAddingCaseTo(section.id)}>+ Add case</Btn>}
               <button onClick={() => deleteSection(section.id)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px' }}>✕</button>
             </div>
@@ -240,10 +248,10 @@ function CasesTab({ sections, cases, projectId, onRefresh }: { sections: Section
                         </div>
                         {tc.description && <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280' }}>{tc.description}</p>}
                       </div>
-                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      {canEditCases(myRole) && <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                         <Btn sm onClick={() => setEditingCase(tc)}>Edit</Btn>
                         <Btn sm onClick={() => deleteCase(tc.id)}>✕</Btn>
-                      </div>
+                      </div>}
                     </div>
                   )
                 })}
@@ -320,7 +328,7 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
 
 // ─── Test Runs Tab ────────────────────────────────────────────────────────────
 
-function RunsTab({ runs, cases, sections, projectId, onRefresh }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; projectId: string; onRefresh: () => void }) {
+function RunsTab({ runs, cases, sections, projectId, myRole, onRefresh }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void }) {
   const [creating, setCreating] = useState(false)
   const [activeRun, setActiveRun] = useState<string | null>(null)
   const sb = createClient()
@@ -355,7 +363,7 @@ function RunsTab({ runs, cases, sections, projectId, onRefresh }: { runs: TestRu
         <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
           {runs.length} run{runs.length !== 1 ? 's' : ''}
         </p>
-        <Btn onClick={() => setCreating(true)} sm disabled={cases.length === 0}>▶ New test run</Btn>
+        {canExecuteRuns(myRole) && <Btn onClick={() => setCreating(true)} sm disabled={cases.length === 0}>▶ New test run</Btn>}
       </div>
 
       {cases.length === 0 && (

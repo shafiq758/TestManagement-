@@ -11,6 +11,7 @@ export default function AuthPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [verifySent, setVerifySent] = useState(false)
 
   const handle = async () => {
     setError('')
@@ -18,20 +19,67 @@ export default function AuthPage() {
     if (mode === 'signup' && !name) { setError('Name is required.'); return }
     setLoading(true)
     const sb = createClient()
+
     if (mode === 'signup') {
-      const { error: e } = await sb.auth.signUp({
+      const { data, error: e } = await sb.auth.signUp({
         email, password,
-        options: { data: { name } }
+        options: {
+          data: { name },
+          emailRedirectTo: `${window.location.origin}/auth/verify`,
+        }
       })
       if (e) { setError(e.message); setLoading(false); return }
+      // If email confirmation is required
+      if (data.user && !data.session) {
+        setVerifySent(true)
+        setLoading(false)
+        return
+      }
+      router.replace('/dashboard')
     } else {
-      const { error: e } = await sb.auth.signInWithPassword({ email, password })
+      const { data, error: e } = await sb.auth.signInWithPassword({ email, password })
       if (e) { setError(e.message); setLoading(false); return }
+      // Check if email is confirmed
+      if (data.user && !data.user.email_confirmed_at) {
+        setError('Please verify your email before signing in. Check your inbox.')
+        await sb.auth.signOut()
+        setLoading(false)
+        return
+      }
+      router.replace('/dashboard')
     }
-    router.replace('/dashboard')
   }
 
-  const s = styles
+  const resendVerification = async () => {
+    const sb = createClient()
+    await sb.auth.resend({ type: 'signup', email, options: { emailRedirectTo: `${window.location.origin}/auth/verify` } })
+    setError('')
+    setVerifySent(true)
+  }
+
+  if (verifySent) {
+    return (
+      <div style={s.page}>
+        <div style={s.card}>
+          <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📧</div>
+            <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 600 }}>Check your email</h2>
+            <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 16px' }}>
+              We sent a verification link to <strong>{email}</strong>. Click it to activate your account.
+            </p>
+            <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 16px' }}>
+              Didn't receive it?{' '}
+              <button onClick={resendVerification} style={s.link}>Resend email</button>
+            </p>
+            <button onClick={() => { setVerifySent(false); setMode('login') }} style={s.link}>
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={s.page}>
       <div style={s.card}>
@@ -59,7 +107,7 @@ export default function AuthPage() {
           <Input value={email} onChange={setEmail} placeholder="you@example.com" type="email" />
         </Field>
         <Field label="Password">
-          <Input value={password} onChange={setPassword} placeholder="Password" type="password"
+          <Input value={password} onChange={setPassword} placeholder="Min. 8 characters" type="password"
             onKeyDown={(e: any) => e.key === 'Enter' && handle()} />
         </Field>
 
@@ -95,7 +143,7 @@ function Input({ value, onChange, placeholder, type = 'text', onKeyDown }: any) 
   )
 }
 
-const styles: Record<string, React.CSSProperties> = {
+const s: Record<string, React.CSSProperties> = {
   page: { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f3f4f6', padding: 16 },
   card: { background: '#fff', borderRadius: 14, border: '1px solid #e5e7eb', padding: '36px 32px', width: '100%', maxWidth: 380 },
   header: { marginBottom: 24 },
@@ -105,5 +153,5 @@ const styles: Record<string, React.CSSProperties> = {
   error: { background: '#fef2f2', color: '#dc2626', fontSize: 13, padding: '8px 12px', borderRadius: 8, marginBottom: 14 },
   btn: { width: '100%', background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginTop: 4 },
   toggle: { fontSize: 13, textAlign: 'center', marginTop: 14, color: '#6b7280' },
-  link: { background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontWeight: 500, fontSize: 13, padding: 0 },
+  link: { background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontWeight: 500, fontSize: 13, padding: 0, textDecoration: 'underline' },
 }

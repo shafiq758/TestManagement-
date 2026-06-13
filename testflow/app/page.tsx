@@ -3,13 +3,19 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
+const SUPER_ADMIN_EMAIL = 'muhammad.shafiqurrehman@gmail.com'
+
 export default function Home() {
   const router = useRouter()
   useEffect(() => {
     const sb = createClient()
     sb.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace('/dashboard')
-      else router.replace('/auth')
+      if (!data.session) { router.replace('/auth'); return }
+      if (data.session.user.email === SUPER_ADMIN_EMAIL) {
+        router.replace('/superadmin')
+      } else {
+        router.replace('/dashboard')
+      }
     })
   }, [router])
   return (
