@@ -79,12 +79,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const createProject = async () => {
     if (!newName.trim() || !workspace) return
     const sb = createClient()
-    const { data } = await sb.from('projects').insert({ name: newName.trim(), workspace_id: workspace.id }).select().single()
+    const { data, error } = await sb.from('projects').insert({ name: newName.trim(), workspace_id: workspace.id }).select().single()
+    if (error) {
+      if (error.code === '23505') alert(`A project named "${newName.trim()}" already exists in this workspace.`)
+      else alert(error.message)
+      return
+    }
     if (data) {
       setProjects(p => [...p, data])
       setNewName(''); setCreating(false)
       router.push(`/dashboard/${data.id}`)
     }
+  }
+
+  const deleteProject = async (projectId: string, projectName: string, e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    if (!confirm(`Delete project "${projectName}"? This will permanently delete all sections, test cases, runs, sprints, milestones and bugs inside it.`)) return
+    const sb = createClient()
+    await sb.from('projects').delete().eq('id', projectId)
+    setProjects(p => p.filter(x => x.id !== projectId))
+    if (activeId === projectId) router.push('/dashboard')
   }
 
   const logout = async () => {
@@ -158,18 +172,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </div>
 
               {projects.map(p => (
-                <Link key={p.id} href={`/dashboard/${p.id}`} style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', marginBottom: 2, gap: 0 }}
+                onMouseEnter={e => { const btn = e.currentTarget.querySelector('.del-btn') as HTMLElement; if(btn) btn.style.opacity='1' }}
+                onMouseLeave={e => { const btn = e.currentTarget.querySelector('.del-btn') as HTMLElement; if(btn) btn.style.opacity='0' }}>
+                <Link href={`/dashboard/${p.id}`} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, flex: 1,
                   padding: '7px 10px', borderRadius: 8, textDecoration: 'none',
                   background: activeId === p.id ? '#fff' : 'transparent',
                   border: activeId === p.id ? '1px solid #e5e7eb' : '1px solid transparent',
-                  color: '#111', fontSize: 13, marginBottom: 2,
+                  color: '#111', fontSize: 13,
                 }}>
                   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
                     <path d="M2 4a1 1 0 011-1h3l1.5 2H13a1 1 0 011 1v6a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" fill="#9ca3af"/>
                   </svg>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
                 </Link>
+                {canCreateProjects(myRole) && (
+                  <button className="del-btn" onClick={(e) => deleteProject(p.id, p.name, e)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px', opacity: 0, transition: 'opacity 0.15s', flexShrink: 0 }}
+                    title="Delete project">✕</button>
+                )}
+              </div>
               ))}
 
               {creating && canCreateProjects(myRole) && (

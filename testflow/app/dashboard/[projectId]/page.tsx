@@ -260,65 +260,18 @@ export default function ProjectPage() {
         {tab === 'bugs' && (
           <BugsTab bugs={bugs} projectId={projectId} sprints={sprints}
             testRuns={runs} testCases={cases}
-            canEdit={canEditCases(myRole)} onRefresh={load} onViewBug={setDrawerBug} />
+            canEdit={canEditCases(myRole)} onRefresh={load} onViewBug={(b) => pushNav("bug", b)} />
         )}
       </div>
 
-      {/* Bug detail drawer */}
-      {drawerBug && (() => {
-        const sprint = sprints.find(s => s.id === drawerBug.sprint_id)
-        const run = runs.find(r => r.id === drawerBug.test_run_id)
-        const tc = cases.find(c => c.id === drawerBug.test_case_id)
-        const sc = {critical:{bg:'#fef2f2',color:'#b91c1c'},high:{bg:'#fff7ed',color:'#c2410c'},medium:{bg:'#fffbeb',color:'#d97706'},low:{bg:'#f0fdf4',color:'#15803d'}}[drawerBug.severity]
-        const stc = {open:{bg:'#fef2f2',color:'#dc2626'},in_progress:{bg:'#eff6ff',color:'#2563eb'},resolved:{bg:'#f0fdf4',color:'#15803d'},closed:{bg:'#f3f4f6',color:'#374151'},wont_fix:{bg:'#faf5ff',color:'#7c3aed'}}[drawerBug.status]
-        const imgs = (drawerBug.attachments||[]).filter(u => !u.match(/\.(mp4|webm|mov)$/i))
-        const vids = (drawerBug.attachments||[]).filter(u => u.match(/\.(mp4|webm|mov)$/i))
-        return (
-          <GlobalDrawer title={drawerBug.title} onClose={() => setDrawerBug(null)}>
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-              <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{drawerBug.severity}</span>
-              <span style={{ background: stc.bg, color: stc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{drawerBug.status.replace('_',' ')}</span>
-              <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(drawerBug.created_at).toLocaleDateString()}</span>
-            </div>
-            <GDRow label="Sprint" value={sprint ? <button onClick={() => { setDrawerBug(null); pushNav('sprint', sprint) }} style={bugLinkBtn}>🏃 {sprint.name} →</button> : null} />
-            <GDRow label="Test run" value={run ? <button onClick={() => { setDrawerBug(null); pushNav('run', run) }} style={bugLinkBtn}>▶ {run.name} →</button> : null} />
-            <GDRow label="Test case" value={tc ? <button onClick={() => { setDrawerBug(null); pushNav('case', {...tc, sectionName: sections.find(s => s.id === tc.section_id)?.name || ''}) }} style={bugLinkBtn}>🧪 {tc.title} →</button> : null} />
-            <GDRow label="Description" value={drawerBug.description} />
-            <GDRow label="Steps to reproduce" value={drawerBug.steps ? <pre style={{ margin:0, fontFamily:'inherit', whiteSpace:'pre-wrap', fontSize:13 }}>{drawerBug.steps}</pre> : null} />
-            <GDRow label="Expected result" value={drawerBug.expected_result} />
-            <GDRow label="Actual result" value={drawerBug.actual_result} />
-            {imgs.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ margin:'0 0 8px', fontSize:11, fontWeight:600, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em' }}>Images ({imgs.length})</p>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))', gap:8 }}>
-                  {imgs.map((url,i) => (
-                    <a key={i} href={url} target="_blank" rel="noreferrer">
-                      <img src={url} alt={`attachment-${i+1}`} style={{ width:'100%', height:90, objectFit:'cover', borderRadius:6, border:'1px solid #e5e7eb', display:'block' }} />
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
-            {vids.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ margin:'0 0 8px', fontSize:11, fontWeight:600, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em' }}>Videos ({vids.length})</p>
-                {vids.map((url,i) => (
-                  <video key={i} src={url} controls style={{ width:'100%', borderRadius:6, marginBottom:6 }} />
-                ))}
-              </div>
-            )}
-          </GlobalDrawer>
-        )
-      })()}
-
-      {/* ── Drill-down Detail Panel ── */}
+            {/* ── Drill-down Detail Panel ── */}
       {navStack.length > 0 && <DrillDown
         stack={navStack}
         cases={cases} sections={sections} sprints={sprints}
         testPlans={testPlans} runs={runs} milestones={milestones} bugs={bugs}
         myRole={myRole}
         onPush={pushNav} onPop={popNav} onGoTo={goToIndex} onClose={clearNav}
-        onViewBug={setDrawerBug}
+        onViewBug={(b) => pushNav("bug", b)}
         onUpdateRunResult={async (runId, caseId, status) => {
           const run = runs.find(r => r.id === runId)
           if (!run) return
@@ -1005,7 +958,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
             ))}
           </div>
           {sprintRuns.length > 0 && (
-            <div>
+            <div style={{ marginBottom: 20 }}>
               <p style={sectionLabel}>Test Runs ({sprintRuns.length})</p>
               {sprintRuns.map((run, i) => {
                 const res = run.results || {}
@@ -1023,6 +976,29 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
               })}
             </div>
           )}
+          {(() => {
+            const sprintBugs = bugs.filter((b: any) => b.sprint_id === data.id)
+            if (sprintBugs.length === 0) return null
+            const sevCfgS: Record<string, {bg:string;color:string}> = {critical:{bg:'#fef2f2',color:'#b91c1c'},high:{bg:'#fff7ed',color:'#c2410c'},medium:{bg:'#fffbeb',color:'#d97706'},low:{bg:'#f0fdf4',color:'#15803d'}}
+            const stCfgS: Record<string, {bg:string;color:string;label:string}> = {open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"}}
+            return (
+              <div>
+                <p style={sectionLabel}>Bugs ({sprintBugs.length})</p>
+                {sprintBugs.map((bug: any, i: number) => {
+                  const sc = sevCfgS[bug.severity] || sevCfgS.medium
+                  const bc = stCfgS[bug.status] || stCfgS.open
+                  return (
+                    <DDCard key={bug.id} onClick={() => onPush('bug', bug)} last={i === sprintBugs.length - 1}>
+                      <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>🐛 {bug.title}</p></div>
+                      <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bug.severity}</span>
+                      <span style={{ background: bc.bg, color: bc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bc.label}</span>
+                      <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                    </DDCard>
+                  )
+                })}
+              </div>
+            )
+          })()}
         </div>
       )
     }
@@ -1164,11 +1140,12 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
             const st = res[tc.id] || 'untested'
             const sc = stColors[st]
             const pc = priorityCfg[tc.priority]
+            const tcBugs = bugs.filter((b: any) => b.test_case_id === tc.id)
             return (
-              <DDCard key={tc.id} onClick={() => onPush('runcase', tc, {results: res, runId: data.id})} last={i === runCases.length - 1}>
+              <DDCard key={tc.id} onClick={() => onPush('runcase', tc, {results: res, runId: data.id, bugs})} last={i === runCases.length - 1}>
                 <div style={{ flex: 1 }}>
                   <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p>
-                  <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</p>
+                  <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}{tcBugs.length > 0 ? ` · 🐛 ${tcBugs.length} bug${tcBugs.length !== 1 ? 's' : ''}` : ''}</p>
                 </div>
                 <span style={{ background: pc.bg, color: pc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{tc.priority}</span>
                 <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{st}</span>
@@ -1176,6 +1153,88 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
               </DDCard>
             )
           })}
+          {(() => {
+            const runBugs = bugs.filter((b: any) => b.test_run_id === data.id)
+            if (runBugs.length === 0) return null
+            const sevCfgR: Record<string, {bg:string;color:string}> = {critical:{bg:'#fef2f2',color:'#b91c1c'},high:{bg:'#fff7ed',color:'#c2410c'},medium:{bg:'#fffbeb',color:'#d97706'},low:{bg:'#f0fdf4',color:'#15803d'}}
+            const stCfgR: Record<string, {bg:string;color:string;label:string}> = {open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"}}
+            return (
+              <div style={{ marginTop: 16 }}>
+                <p style={sectionLabel}>Bugs in this run ({runBugs.length})</p>
+                {runBugs.map((bug: any, i: number) => {
+                  const sc = sevCfgR[bug.severity] || sevCfgR.medium
+                  const bc = stCfgR[bug.status] || stCfgR.open
+                  return (
+                    <DDCard key={bug.id} onClick={() => onPush('bug', bug)} last={i === runBugs.length - 1}>
+                      <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>🐛 {bug.title}</p></div>
+                      <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bug.severity}</span>
+                      <span style={{ background: bc.bg, color: bc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bc.label}</span>
+                      <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                    </DDCard>
+                  )
+                })}
+              </div>
+            )
+          })()}
+        </div>
+      )
+    }
+
+    // ── BUG ──
+    if (type === 'bug') {
+      const sprint = sprints.find(s => s.id === data.sprint_id)
+      const run = runs.find(r => r.id === data.test_run_id)
+      const tc = cases.find(c => c.id === data.test_case_id)
+      const sevCfgB: Record<string, {bg:string;color:string;label:string}> = {
+        critical:{bg:'#fef2f2',color:'#b91c1c',label:'Critical'},
+        high:{bg:'#fff7ed',color:'#c2410c',label:'High'},
+        medium:{bg:'#fffbeb',color:'#d97706',label:'Medium'},
+        low:{bg:'#f0fdf4',color:'#15803d',label:'Low'},
+      }
+      const stCfgB: Record<string, {bg:string;color:string;label:string}> = {
+        open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},
+        in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},
+        resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},
+        closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},
+        wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"},
+      }
+      const sc = sevCfgB[data.severity] || sevCfgB.medium
+      const bc = stCfgB[data.status] || stCfgB.open
+      const imgs = (data.attachments||[]).filter((u: string) => !u.match(/\.(mp4|webm|mov)$/i))
+      const vids = (data.attachments||[]).filter((u: string) => u.match(/\.(mp4|webm|mov)$/i))
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{sc.label}</span>
+            <span style={{ background: bc.bg, color: bc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{bc.label}</span>
+          </div>
+          {sprint && <DDRow label="Sprint" value={<button onClick={() => onPush('sprint', sprint)} style={linkBtn}>🏃 {sprint.name} →</button>} />}
+          {run && <DDRow label="Test run" value={<button onClick={() => onPush('run', run)} style={linkBtn}>▶ {run.name} →</button>} />}
+          {tc && <DDRow label="Test case" value={<button onClick={() => onPush('case', {...tc, sectionName: sections.find(s => s.id === tc.section_id)?.name || ''})} style={linkBtn}>🧪 {tc.title} →</button>} />}
+          {data.description && <DDRow label="Description" value={data.description} />}
+          {data.steps && <DDRow label="Steps to reproduce" value={<pre style={{ margin:0, fontFamily:'inherit', whiteSpace:'pre-wrap', fontSize:13, color:'#374151' }}>{data.steps}</pre>} />}
+          {data.expected_result && <DDRow label="Expected result" value={data.expected_result} />}
+          {data.actual_result && <DDRow label="Actual result" value={data.actual_result} />}
+          {imgs.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabel}>Screenshots ({imgs.length})</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 8 }}>
+                {imgs.map((url: string, i: number) => (
+                  <a key={i} href={url} target="_blank" rel="noreferrer">
+                    <img src={url} alt={`screenshot-${i+1}`} style={{ width:'100%', height:90, objectFit:'cover', borderRadius:6, border:'1px solid #e5e7eb', display:'block' }} />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+          {vids.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabel}>Videos ({vids.length})</p>
+              {vids.map((url: string, i: number) => (
+                <video key={i} src={url} controls style={{ width:'100%', borderRadius:6, marginBottom:6 }} />
+              ))}
+            </div>
+          )}
         </div>
       )
     }
