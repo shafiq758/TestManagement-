@@ -292,7 +292,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh }: { sections:
                       <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', paddingTop: 2, minWidth: 48 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: 13, fontWeight: 500 }}>{tc.title}</span>
+                          <button onClick={() => setViewingCase(tc)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 500, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit", textAlign: "left" }}>{tc.title}</button>
                           <Badge {...pb} />
                           <span style={{ fontSize: 11, color: '#9ca3af', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>{tc.type}</span>
                         </div>
@@ -404,6 +404,8 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
   const [activeRun, setActiveRun] = useState<string | null>(null)
   const [viewingRun, setViewingRun] = useState<TestRun | null>(null)
   const [viewingRunCase, setViewingRunCase] = useState<any | null>(null)
+  const [viewingRunCaseResults, setViewingRunCaseResults] = useState<Record<string, RunStatus>>({})
+  const [viewingRunId, setViewingRunId] = useState<string | null>(null)
   const sb = createClient()
 
   const createRun = async (name: string, caseIds: string[], sprintId: string, planId: string) => {
@@ -506,7 +508,8 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
 
             {isActive && (
               <RunExecution run={run} runCases={runCases} results={results}
-                onUpdateResult={updateResult} onBulkUpdate={bulkUpdateResults} />
+                onUpdateResult={updateResult} onBulkUpdate={bulkUpdateResults}
+                onViewCase={(tc) => { setViewingRunCase(tc); setViewingRunCaseResults(results); setViewingRunId(run.id) }} />
             )}
           </div>
         )
@@ -514,6 +517,44 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
 
       {creating && (
         <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />
+      )}
+
+      {/* Test case detail from run execution */}
+      {viewingRunCase && (
+        <Drawer title={viewingRunCase.title} onClose={() => setViewingRunCase(null)}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <span style={{ fontSize: 11, background: viewingRunCase.priority === 'high' ? '#fef2f2' : viewingRunCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: viewingRunCase.priority === 'high' ? '#dc2626' : viewingRunCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{viewingRunCase.priority}</span>
+            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{viewingRunCase.type}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{viewingRunCase.id.slice(0, 5).toUpperCase()}</span>
+          </div>
+          <DetailRow label="Current status" value={
+            <span style={{ fontWeight: 600, color: ({ pass: '#15803d', fail: '#dc2626', skip: '#ca8a04', untested: '#6b7280' } as any)[viewingRunCaseResults[viewingRunCase.id] || 'untested'] }}>
+              {viewingRunCaseResults[viewingRunCase.id] || 'untested'}
+            </span>
+          } />
+          <DetailRow label="Section" value={viewingRunCase.sectionName} />
+          <DetailRow label="Description" value={viewingRunCase.description || '—'} />
+          <DetailRow label="Steps to reproduce" value={
+            viewingRunCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{viewingRunCase.steps}</pre> : '—'
+          } />
+          <DetailRow label="Expected result" value={viewingRunCase.expected_result || '—'} />
+          {viewingRunId && (
+            <div style={{ marginTop: 16 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Update status</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['pass', 'fail', 'skip'] as const).map(s => {
+                  const sc = { pass: { bg: '#dcfce7', color: '#15803d' }, fail: { bg: '#fee2e2', color: '#dc2626' }, skip: { bg: '#fef9c3', color: '#ca8a04' } }[s]
+                  return (
+                    <button key={s} onClick={() => { updateResult(viewingRunId, viewingRunCase.id, s); setViewingRunCase(null) }}
+                      style={{ flex: 1, padding: '8px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: sc.bg, color: sc.color }}>
+                      {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </Drawer>
       )}
 
       {viewingRun && (() => {
@@ -701,15 +742,15 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
 
 // ─── Run Execution with bulk selection ───────────────────────────────────────
 
-function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate }: {
+function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate, onViewCase }: {
   run: TestRun
   runCases: any[]
   results: Record<string, RunStatus>
   onUpdateResult: (runId: string, caseId: string, status: RunStatus) => void
   onBulkUpdate: (runId: string, caseIds: string[], status: RunStatus) => void
+  onViewCase: (tc: any) => void
 }) {
   const [selected, setSelected] = useState<string[]>([])
-  const [viewingRunCase, setViewingRunCase] = useState<any | null>(null)
   const allSelected = selected.length === runCases.length && runCases.length > 0
   const someSelected = selected.length > 0
 
@@ -778,7 +819,7 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate }: 
           }}>
             <input type="checkbox" checked={isSelected} onChange={() => toggleOne(tc.id)} style={{ cursor: 'pointer', flexShrink: 0 }} />
             <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
-            <button onClick={() => setViewingRunCase(tc)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, flex: 1, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{tc.title}</button>
+            <button onClick={() => onViewCase(tc)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, flex: 1, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{tc.title}</button>
             <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
 
             {/* Current status badge + individual buttons */}
@@ -806,37 +847,6 @@ function RunExecution({ run, runCases, results, onUpdateResult, onBulkUpdate }: 
         )
       })}
     </div>
-    {viewingRunCase && (
-        <Drawer title={viewingRunCase.title} onClose={() => setViewingRunCase(null)}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            <span style={{ fontSize: 11, background: viewingRunCase.priority === 'high' ? '#fef2f2' : viewingRunCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: viewingRunCase.priority === 'high' ? '#dc2626' : viewingRunCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{viewingRunCase.priority}</span>
-            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{viewingRunCase.type}</span>
-            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{viewingRunCase.id.slice(0, 5).toUpperCase()}</span>
-          </div>
-          <DetailRow label="Current status" value={
-            <span style={{ fontWeight: 600, color: statusColors[(results[viewingRunCase.id] || 'untested')].color }}>
-              {results[viewingRunCase.id] || 'untested'}
-            </span>
-          } />
-          <DetailRow label="Section" value={viewingRunCase.sectionName} />
-          <DetailRow label="Description" value={viewingRunCase.description || '—'} />
-          <DetailRow label="Steps to reproduce" value={
-            viewingRunCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{viewingRunCase.steps}</pre> : '—'
-          } />
-          <DetailRow label="Expected result" value={viewingRunCase.expected_result || '—'} />
-          <div style={{ marginTop: 16 }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Update status</p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['pass', 'fail', 'skip'] as const).map(s => (
-                <button key={s} onClick={() => { onUpdateResult(run.id, viewingRunCase.id, s); setViewingRunCase(null) }}
-                  style={{ flex: 1, padding: '8px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: statusColors[s].bg, color: statusColors[s].color }}>
-                  {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
-                </button>
-              ))}
-            </div>
-          </div>
-        </Drawer>
-      )}
     </>
   )
 }
