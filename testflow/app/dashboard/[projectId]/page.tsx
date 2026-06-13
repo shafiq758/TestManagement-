@@ -159,7 +159,7 @@ export default function ProjectPage() {
             myRole={myRole} onRefresh={load} />
         )}
         {tab === 'runs' && (
-          <RunsTab runs={runs} cases={cases} sections={sections} projectId={projectId}
+          <RunsTab runs={runs} cases={cases} sections={sections} sprints={sprints} testPlans={testPlans} projectId={projectId}
             myRole={myRole} onRefresh={load} />
         )}
         {tab === 'sprints' && (
@@ -346,13 +346,13 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
 
 // ─── Test Runs Tab ────────────────────────────────────────────────────────────
 
-function RunsTab({ runs, cases, sections, projectId, myRole, onRefresh }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void }) {
+function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void }) {
   const [creating, setCreating] = useState(false)
   const [activeRun, setActiveRun] = useState<string | null>(null)
   const sb = createClient()
 
-  const createRun = async (name: string, caseIds: string[]) => {
-    await sb.from('test_runs').insert({ name, case_ids: caseIds, results: {}, project_id: projectId })
+  const createRun = async (name: string, caseIds: string[], sprintId: string, planId: string) => {
+    await sb.from('test_runs').insert({ name, case_ids: caseIds, results: {}, project_id: projectId, sprint_id: sprintId, plan_id: planId })
     setCreating(false); onRefresh()
   }
 
@@ -381,21 +381,26 @@ function RunsTab({ runs, cases, sections, projectId, myRole, onRefresh }: { runs
         <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
           {runs.length} run{runs.length !== 1 ? 's' : ''}
         </p>
-        {canExecuteRuns(myRole) && <Btn onClick={() => setCreating(true)} sm disabled={cases.length === 0}>▶ New test run</Btn>}
+        {canExecuteRuns(myRole) && <Btn onClick={() => setCreating(true)} sm disabled={testPlans.length === 0}>▶ New test run</Btn>}
       </div>
 
-      {cases.length === 0 && (
+      {sprints.length === 0 && (
         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
-          Create test cases first before starting a test run.
+          Create a Sprint and Test Plan first — test runs must be linked to a test plan.
+        </div>
+      )}
+      {sprints.length > 0 && testPlans.length === 0 && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
+          Create a Test Plan inside a sprint first before starting a test run.
         </div>
       )}
 
-      {runs.length === 0 && cases.length > 0 && (
+      {runs.length === 0 && testPlans.length > 0 && (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <p style={{ fontSize: 32, margin: '0 0 10px' }}>▶</p>
           <p style={{ fontWeight: 500, margin: '0 0 6px' }}>No test runs yet</p>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px' }}>Create a run to track execution against your test cases.</p>
-          <Btn onClick={() => setCreating(true)}>▶ New test run</Btn>
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px' }}>Select a sprint and test plan to create your first run.</p>
+          {canExecuteRuns(myRole) && <Btn onClick={() => setCreating(true)}>▶ New test run</Btn>}
         </div>
       )}
 
@@ -414,7 +419,11 @@ function RunsTab({ runs, cases, sections, projectId, myRole, onRefresh }: { runs
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#f9fafb' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: '0 0 3px', fontWeight: 600, fontSize: 14 }}>{run.name}</p>
-                <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{new Date(run.created_at).toLocaleDateString()} · {runCases.length} cases</p>
+                <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>
+                  {new Date(run.created_at).toLocaleDateString()} · {runCases.length} cases
+                  {run.sprint_id && sprints.find((s: any) => s.id === run.sprint_id) && <span> · 🏃 {sprints.find((s: any) => s.id === run.sprint_id)?.name}</span>}
+                  {run.plan_id && testPlans.find((p: any) => p.id === run.plan_id) && <span> · 📋 {testPlans.find((p: any) => p.id === run.plan_id)?.name}</span>}
+                </p>
               </div>
               <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
                 {[['pass', passed, '#16a34a'], ['fail', failed, '#dc2626'], ['skip', skipped, '#ca8a04'], ['—', untested, '#9ca3af']].map(([label, n, color]) => (
@@ -462,49 +471,133 @@ function RunsTab({ runs, cases, sections, projectId, myRole, onRefresh }: { runs
       })}
 
       {creating && (
-        <CreateRunModal allCases={allCasesWithSection} onSave={createRun} onClose={() => setCreating(false)} />
+        <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />
       )}
     </div>
   )
 }
 
-function CreateRunModal({ allCases, onSave, onClose }: { allCases: any[]; onSave: (name: string, ids: string[]) => void; onClose: () => void }) {
+function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
+  allCases: any[]; sprints: any[]; testPlans: any[]
+  onSave: (name: string, ids: string[], sprintId: string, planId: string) => void
+  onClose: () => void
+}) {
   const [name, setName] = useState('')
-  const [selected, setSelected] = useState<string[]>(allCases.map(c => c.id))
+  const [sprintId, setSprintId] = useState(sprints[0]?.id || '')
+  const [planId, setPlanId] = useState('')
+  const [search, setSearch] = useState('')
+  const [filterType, setFilterType] = useState('')
+  const [filterPriority, setFilterPriority] = useState('')
+  const [selected, setSelected] = useState<string[]>([])
+
+  // Plans for selected sprint
+  const sprintPlans = testPlans.filter(p => p.sprint_id === sprintId)
+
+  // When sprint changes, reset plan and auto-select first plan's cases
+  const handleSprintChange = (sid: string) => {
+    setSprintId(sid)
+    setPlanId('')
+    setSelected([])
+  }
+
+  // When plan changes, auto-populate cases from plan
+  const handlePlanChange = (pid: string) => {
+    setPlanId(pid)
+    const plan = testPlans.find(p => p.id === pid)
+    setSelected(plan?.case_ids || [])
+  }
+
   const toggle = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
 
+  // Filter cases based on search, type, priority
+  const planCaseIds = testPlans.find(p => p.id === planId)?.case_ids || []
+  const planCases = planId ? allCases.filter(c => planCaseIds.includes(c.id)) : allCases
+  const filtered = planCases.filter(c => {
+    const matchSearch = !search || c.title.toLowerCase().includes(search.toLowerCase())
+    const matchType = !filterType || c.type === filterType
+    const matchPriority = !filterPriority || c.priority === filterPriority
+    return matchSearch && matchType && matchPriority
+  })
+
+  const selStyle: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 10px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }
+
   return (
-    <Modal title="New test run" onClose={onClose} width={540}>
+    <Modal title="New test run" onClose={onClose} width={580}>
       <Field label="Run name" required>
-        <Inp value={name} onChange={setName} placeholder="e.g. Sprint 14 smoke" autoFocus />
+        <Inp value={name} onChange={setName} placeholder="e.g. Sprint 1 regression" autoFocus />
       </Field>
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
-          <label style={{ fontSize: 12, fontWeight: 500, color: '#6b7280' }}>Test cases</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setSelected(allCases.map(c => c.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#2563eb', fontFamily: 'inherit' }}>Select all</button>
-            <button onClick={() => setSelected([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#6b7280', fontFamily: 'inherit' }}>Deselect all</button>
+
+      {/* Step 1: Select Sprint */}
+      <Field label="Sprint" required>
+        <select value={sprintId} onChange={e => handleSprintChange(e.target.value)} style={{ ...selStyle, width: '100%' }}>
+          <option value="">— Select sprint —</option>
+          {sprints.map(s => <option key={s.id} value={s.id}>{s.name} ({s.status})</option>)}
+        </select>
+      </Field>
+
+      {/* Step 2: Select Test Plan */}
+      {sprintId && (
+        <Field label="Test plan" required>
+          {sprintPlans.length === 0 ? (
+            <p style={{ fontSize: 12, color: '#ef4444', margin: 0 }}>No test plans in this sprint. Create one in the Sprints tab first.</p>
+          ) : (
+            <select value={planId} onChange={e => handlePlanChange(e.target.value)} style={{ ...selStyle, width: '100%' }}>
+              <option value="">— Select test plan —</option>
+              {sprintPlans.map(p => <option key={p.id} value={p.id}>{p.name} ({p.case_ids.length} cases)</option>)}
+            </select>
+          )}
+        </Field>
+      )}
+
+      {/* Step 3: Filter and select cases */}
+      {planId && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 500, color: '#6b7280' }}>Test cases ({selected.length} selected)</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => setSelected(filtered.map(c => c.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#2563eb', fontFamily: 'inherit' }}>Select all</button>
+              <button onClick={() => setSelected([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#6b7280', fontFamily: 'inherit' }}>None</button>
+            </div>
           </div>
+
+          {/* Filters */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title..." style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 10px', fontSize: 12, outline: 'none' }} />
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={selStyle}>
+              <option value="">All types</option>
+              <option value="functional">Functional</option>
+              <option value="regression">Regression</option>
+              <option value="smoke">Smoke</option>
+              <option value="integration">Integration</option>
+            </select>
+            <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={selStyle}>
+              <option value="">All priorities</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+
+          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+            {filtered.map((tc, i) => (
+              <label key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', background: selected.includes(tc.id) ? '#eff6ff' : '#fff' }}>
+                <input type="checkbox" checked={selected.includes(tc.id)} onChange={() => toggle(tc.id)} style={{ cursor: 'pointer' }} />
+                <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+                <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+                <span style={{ fontSize: 11, background: tc.priority === 'high' ? '#fef2f2' : tc.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: tc.priority === 'high' ? '#dc2626' : tc.priority === 'medium' ? '#d97706' : '#16a34a', padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.type}</span>
+              </label>
+            ))}
+            {filtered.length === 0 && <p style={{ padding: '12px', fontSize: 13, color: '#9ca3af', margin: 0 }}>No cases match filters.</p>}
+          </div>
+          <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>{selected.length} of {filtered.length} shown selected</p>
         </div>
-        <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-          {allCases.map((tc, i) => (
-            <label key={tc.id} style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer',
-              borderTop: i > 0 ? '1px solid #f3f4f6' : 'none',
-              background: selected.includes(tc.id) ? '#eff6ff' : '#fff',
-            }}>
-              <input type="checkbox" checked={selected.includes(tc.id)} onChange={() => toggle(tc.id)} style={{ cursor: 'pointer' }} />
-              <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
-              <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
-              <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
-            </label>
-          ))}
-        </div>
-        <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>{selected.length} of {allCases.length} selected</p>
-      </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Btn onClick={onClose}>Cancel</Btn>
-        <Btn primary disabled={!name.trim() || selected.length === 0} onClick={() => onSave(name.trim(), selected)}>Create run</Btn>
+        <Btn primary disabled={!name.trim() || !sprintId || !planId || selected.length === 0}
+          onClick={() => onSave(name.trim(), selected, sprintId, planId)}>Create run</Btn>
       </div>
     </Modal>
   )

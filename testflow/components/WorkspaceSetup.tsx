@@ -22,7 +22,8 @@ export default function WorkspaceSetup({ userId, userEmail }: { userId: string; 
       role: 'admin', invited_email: userEmail,
       is_invited: false, status: 'active'
     })
-    router.replace('/dashboard')
+    // Hard redirect forces full reload so layout picks up new workspace
+    window.location.href = '/dashboard'
   }
 
   return (

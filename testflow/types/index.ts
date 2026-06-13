@@ -55,6 +55,8 @@ export interface TestRun {
   id: string
   name: string
   project_id: string
+  sprint_id?: string
+  plan_id?: string
   case_ids: string[]
   results: Record<string, RunStatus>
   created_at: string
