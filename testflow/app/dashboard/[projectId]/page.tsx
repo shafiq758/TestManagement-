@@ -41,6 +41,33 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
+// ─── Global Drawer (renders at page level, never clipped) ────────────────────
+
+function GlobalDrawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={onClose} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 480, background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fff', flexShrink: 0 }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ padding: '20px', flex: 1, overflowY: 'auto' }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function GDRow({ label, value }: { label: string; value?: React.ReactNode }) {
+  if (!value) return null
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{value}</div>
+    </div>
+  )
+}
+
 // ─── UI primitives ────────────────────────────────────────────────────────────
 
 function Btn({ children, onClick, primary, sm, disabled, style = {} }: any) {
@@ -139,6 +166,12 @@ export default function ProjectPage() {
   const [milestones, setMilestones] = useState<any[]>([])
   const [sprints, setSprints] = useState<any[]>([])
   const [testPlans, setTestPlans] = useState<any[]>([])
+  // Global drawer state — rendered at top level to avoid overflow clipping
+  const [drawerCase, setDrawerCase] = useState<any | null>(null)
+  const [drawerRun, setDrawerRun] = useState<any | null>(null)
+  const [drawerRunCase, setDrawerRunCase] = useState<any | null>(null)
+  const [drawerRunCaseResults, setDrawerRunCaseResults] = useState<Record<string, RunStatus>>({})
+  const [drawerRunId, setDrawerRunId] = useState<string | null>(null)
 
   const sb = createClient()
 
@@ -190,11 +223,13 @@ export default function ProjectPage() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
         {tab === 'cases' && (
           <CasesTab sections={sections} cases={cases} projectId={projectId}
-            myRole={myRole} onRefresh={load} />
+            myRole={myRole} onRefresh={load} onViewCase={setDrawerCase} />
         )}
         {tab === 'runs' && (
           <RunsTab runs={runs} cases={cases} sections={sections} sprints={sprints} testPlans={testPlans} projectId={projectId}
-            myRole={myRole} onRefresh={load} />
+            myRole={myRole} onRefresh={load}
+            onViewRun={setDrawerRun}
+            onViewRunCase={(tc, results, runId) => { setDrawerRunCase(tc); setDrawerRunCaseResults(results); setDrawerRunId(runId) }} />
         )}
         {tab === 'sprints' && (
           <SprintsTab sprints={sprints} milestones={milestones} testPlans={testPlans}
@@ -206,18 +241,131 @@ export default function ProjectPage() {
             canEdit={canEditCases(myRole)} onRefresh={load} />
         )}
       </div>
+
+      {/* ── Global Drawers — rendered at top level, never clipped ── */}
+
+      {/* Test Case detail */}
+      {drawerCase && (
+        <GlobalDrawer title={drawerCase.title} onClose={() => setDrawerCase(null)}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, background: drawerCase.priority === 'high' ? '#fef2f2' : drawerCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: drawerCase.priority === 'high' ? '#dc2626' : drawerCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{drawerCase.priority}</span>
+            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{drawerCase.type}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{drawerCase.id.slice(0,5).toUpperCase()}</span>
+          </div>
+          <GDRow label="Description" value={drawerCase.description} />
+          <GDRow label="Steps to reproduce" value={drawerCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{drawerCase.steps}</pre> : null} />
+          <GDRow label="Expected result" value={drawerCase.expected_result} />
+          <GDRow label="Created" value={new Date(drawerCase.created_at).toLocaleDateString()} />
+          {canEditCases(myRole) && (
+            <button onClick={() => setDrawerCase(null)} style={{ marginTop: 8, border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
+              Close
+            </button>
+          )}
+        </GlobalDrawer>
+      )}
+
+      {/* Test Run case detail */}
+      {drawerRunCase && (
+        <GlobalDrawer title={drawerRunCase.title} onClose={() => setDrawerRunCase(null)}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, background: drawerRunCase.priority === 'high' ? '#fef2f2' : drawerRunCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: drawerRunCase.priority === 'high' ? '#dc2626' : drawerRunCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{drawerRunCase.priority}</span>
+            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{drawerRunCase.type}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{drawerRunCase.id.slice(0,5).toUpperCase()}</span>
+          </div>
+          <GDRow label="Current status" value={
+            <span style={{ fontWeight: 600, color: { pass:'#15803d', fail:'#dc2626', skip:'#ca8a04', untested:'#6b7280' }[drawerRunCaseResults[drawerRunCase.id] || 'untested'] as string }}>
+              {drawerRunCaseResults[drawerRunCase.id] || 'untested'}
+            </span>
+          } />
+          <GDRow label="Section" value={drawerRunCase.sectionName} />
+          <GDRow label="Description" value={drawerRunCase.description} />
+          <GDRow label="Steps to reproduce" value={drawerRunCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{drawerRunCase.steps}</pre> : null} />
+          <GDRow label="Expected result" value={drawerRunCase.expected_result} />
+          {drawerRunId && (
+            <div style={{ marginTop: 16 }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Update status</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['pass','fail','skip'] as const).map(s => {
+                  const sc = {pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}}[s]
+                  return <button key={s} onClick={async () => {
+                    const run = runs.find(r => r.id === drawerRunId)
+                    if (!run) return
+                    const sb = createClient()
+                    await sb.from('test_runs').update({ results: { ...run.results, [drawerRunCase.id]: s } }).eq('id', drawerRunId)
+                    load()
+                    setDrawerRunCase(null)
+                  }} style={{ flex: 1, padding: '8px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: sc.bg, color: sc.color }}>
+                    {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
+                  </button>
+                })}
+              </div>
+            </div>
+          )}
+        </GlobalDrawer>
+      )}
+
+      {/* Test Run detail */}
+      {drawerRun && (() => {
+        const vRunCases = cases.map(c => ({ ...c, sectionName: sections.find(s => s.id === c.section_id)?.name || '' })).filter(c => drawerRun.case_ids.includes(c.id))
+        const vResults = drawerRun.results || {}
+        const passed = vRunCases.filter(c => vResults[c.id] === 'pass').length
+        const failed = vRunCases.filter(c => vResults[c.id] === 'fail').length
+        const skipped = vRunCases.filter(c => vResults[c.id] === 'skip').length
+        const untested = vRunCases.length - passed - failed - skipped
+        const pct = vRunCases.length ? Math.round((passed / vRunCases.length) * 100) : 0
+        const sprint = sprints.find(s => s.id === drawerRun.sprint_id)
+        const plan = testPlans.find(p => p.id === drawerRun.plan_id)
+        const stColors: Record<string, {bg:string;color:string}> = {pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'},untested:{bg:'#f3f4f6',color:'#6b7280'}}
+        return (
+          <GlobalDrawer title={drawerRun.name} onClose={() => setDrawerRun(null)}>
+            <GDRow label="Sprint" value={sprint?.name} />
+            <GDRow label="Test plan" value={plan?.name} />
+            <GDRow label="Created" value={new Date(drawerRun.created_at).toLocaleDateString()} />
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Progress</p>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 13 }}>
+                <span style={{ color: '#15803d' }}>✓ {passed}</span>
+                <span style={{ color: '#dc2626' }}>✗ {failed}</span>
+                <span style={{ color: '#ca8a04' }}>— {skipped}</span>
+                <span style={{ color: '#9ca3af' }}>• {untested} untested</span>
+              </div>
+              <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: '#16a34a' }} />
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>{pct}% complete</p>
+            </div>
+            <div>
+              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Test cases ({vRunCases.length})</p>
+              {vRunCases.map((tc, i) => {
+                const st = vResults[tc.id] || 'untested'
+                const sc = stColors[st]
+                return (
+                  <div key={tc.id} onClick={() => { setDrawerRunCase(tc); setDrawerRunCaseResults(vResults); setDrawerRunId(drawerRun.id); setDrawerRun(null) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 6px', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', cursor: 'pointer', borderRadius: 6 }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#f9fafb'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
+                    <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0,5).toUpperCase()}</span>
+                    <span style={{ fontSize: 13, flex: 1, textDecoration: 'underline', textDecorationColor: '#d1d5db' }}>{tc.title}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: sc.bg, color: sc.color }}>{st}</span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
+                  </div>
+                )
+              })}
+            </div>
+          </GlobalDrawer>
+        )
+      })()}
     </div>
   )
 }
 
 // ─── Test Cases Tab ───────────────────────────────────────────────────────────
 
-function CasesTab({ sections, cases, projectId, myRole, onRefresh }: { sections: Section[]; cases: TestCase[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void }) {
+function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase }: { sections: Section[]; cases: TestCase[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewCase: (tc: any) => void }) {
   const [addingSection, setAddingSection] = useState(false)
   const [sectionName, setSectionName] = useState('')
   const [addingCaseTo, setAddingCaseTo] = useState<string | null>(null)
   const [editingCase, setEditingCase] = useState<TestCase | null>(null)
-  const [viewingCase, setViewingCase] = useState<TestCase | null>(null)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const canEdit = canEditCases(myRole)
   const sb = createClient()
@@ -296,7 +444,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh }: { sections:
                       <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', paddingTop: 2, minWidth: 48 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <button onClick={() => setViewingCase(tc)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 500, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit", textAlign: "left" }}>{tc.title}</button>
+                          <button onClick={() => onViewCase(tc)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 500, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit", textAlign: "left" }}>{tc.title}</button>
                           <Badge {...pb} />
                           <span style={{ fontSize: 11, color: '#9ca3af', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>{tc.type}</span>
                         </div>
@@ -330,27 +478,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh }: { sections:
           initial={editingCase}
           onSave={() => { setEditingCase(null); onRefresh() }} onClose={() => setEditingCase(null)} />
       )}
-      {viewingCase && (
-        <Drawer title={viewingCase.title} onClose={() => setViewingCase(null)}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            <span style={{ fontSize: 11, background: viewingCase.priority === 'high' ? '#fef2f2' : viewingCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: viewingCase.priority === 'high' ? '#dc2626' : viewingCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{viewingCase.priority}</span>
-            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{viewingCase.type}</span>
-            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace', padding: '2px 0' }}>TC-{viewingCase.id.slice(0, 5).toUpperCase()}</span>
-          </div>
-          <DetailRow label="Description" value={viewingCase.description || '—'} />
-          <DetailRow label="Steps to reproduce" value={
-            viewingCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{viewingCase.steps}</pre> : '—'
-          } />
-          <DetailRow label="Expected result" value={viewingCase.expected_result || '—'} />
-          <DetailRow label="Created" value={new Date(viewingCase.created_at).toLocaleDateString()} />
-          {canEdit && (
-            <button onClick={() => { setEditingCase(viewingCase); setViewingCase(null) }}
-              style={{ marginTop: 8, border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>
-              Edit test case
-            </button>
-          )}
-        </Drawer>
-      )}
+
     </div>
   )
 }
@@ -403,13 +531,9 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
 
 // ─── Test Runs Tab ────────────────────────────────────────────────────────────
 
-function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void }) {
+function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh, onViewRun, onViewRunCase }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewRun: (run: TestRun) => void; onViewRunCase: (tc: any, results: Record<string, RunStatus>, runId: string) => void }) {
   const [creating, setCreating] = useState(false)
   const [activeRun, setActiveRun] = useState<string | null>(null)
-  const [viewingRun, setViewingRun] = useState<TestRun | null>(null)
-  const [viewingRunCase, setViewingRunCase] = useState<any | null>(null)
-  const [viewingRunCaseResults, setViewingRunCaseResults] = useState<Record<string, RunStatus>>({})
-  const [viewingRunId, setViewingRunId] = useState<string | null>(null)
   const sb = createClient()
 
   const createRun = async (name: string, caseIds: string[], sprintId: string, planId: string) => {
@@ -488,7 +612,7 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
           <div key={run.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#f9fafb' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <button onClick={() => setViewingRun(run)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, margin: '0 0 3px', fontWeight: 600, fontSize: 14, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{run.name}</button>
+                <button onClick={() => onViewRun(run)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, margin: '0 0 3px', fontWeight: 600, fontSize: 14, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{run.name}</button>
                 <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>
                   {new Date(run.created_at).toLocaleDateString()} · {runCases.length} cases
                   {run.sprint_id && sprints.find((s: any) => s.id === run.sprint_id) && <span> · 🏃 {sprints.find((s: any) => s.id === run.sprint_id)?.name}</span>}
@@ -513,7 +637,7 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
             {isActive && (
               <RunExecution run={run} runCases={runCases} results={results}
                 onUpdateResult={updateResult} onBulkUpdate={bulkUpdateResults}
-                onViewCase={(tc) => { setViewingRunCase(tc); setViewingRunCaseResults(results); setViewingRunId(run.id) }} />
+                onViewCase={(tc) => onViewRunCase(tc, results, run.id)} />
             )}
           </div>
         )
@@ -523,97 +647,7 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
         <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />
       )}
 
-      {/* Test case detail from run execution */}
-      {viewingRunCase && (
-        <Drawer title={viewingRunCase.title} onClose={() => setViewingRunCase(null)}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-            <span style={{ fontSize: 11, background: viewingRunCase.priority === 'high' ? '#fef2f2' : viewingRunCase.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: viewingRunCase.priority === 'high' ? '#dc2626' : viewingRunCase.priority === 'medium' ? '#d97706' : '#16a34a', padding: '2px 8px', borderRadius: 5, fontWeight: 600 }}>{viewingRunCase.priority}</span>
-            <span style={{ fontSize: 11, background: '#f3f4f6', color: '#374151', padding: '2px 8px', borderRadius: 5 }}>{viewingRunCase.type}</span>
-            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{viewingRunCase.id.slice(0, 5).toUpperCase()}</span>
-          </div>
-          <DetailRow label="Current status" value={
-            <span style={{ fontWeight: 600, color: ({ pass: '#15803d', fail: '#dc2626', skip: '#ca8a04', untested: '#6b7280' } as any)[viewingRunCaseResults[viewingRunCase.id] || 'untested'] }}>
-              {viewingRunCaseResults[viewingRunCase.id] || 'untested'}
-            </span>
-          } />
-          <DetailRow label="Section" value={viewingRunCase.sectionName} />
-          <DetailRow label="Description" value={viewingRunCase.description || '—'} />
-          <DetailRow label="Steps to reproduce" value={
-            viewingRunCase.steps ? <pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13 }}>{viewingRunCase.steps}</pre> : '—'
-          } />
-          <DetailRow label="Expected result" value={viewingRunCase.expected_result || '—'} />
-          {viewingRunId && (
-            <div style={{ marginTop: 16 }}>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Update status</p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {(['pass', 'fail', 'skip'] as const).map(s => {
-                  const sc = { pass: { bg: '#dcfce7', color: '#15803d' }, fail: { bg: '#fee2e2', color: '#dc2626' }, skip: { bg: '#fef9c3', color: '#ca8a04' } }[s]
-                  return (
-                    <button key={s} onClick={() => { updateResult(viewingRunId, viewingRunCase.id, s); setViewingRunCase(null) }}
-                      style={{ flex: 1, padding: '8px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: sc.bg, color: sc.color }}>
-                      {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </Drawer>
-      )}
 
-      {viewingRun && (() => {
-        const vRunCases = allCasesWithSection.filter(c => viewingRun.case_ids.includes(c.id))
-        const vResults = viewingRun.results || {}
-        const passed = vRunCases.filter(c => vResults[c.id] === 'pass').length
-        const failed = vRunCases.filter(c => vResults[c.id] === 'fail').length
-        const skipped = vRunCases.filter(c => vResults[c.id] === 'skip').length
-        const untested = vRunCases.length - passed - failed - skipped
-        const pct = vRunCases.length ? Math.round((passed / vRunCases.length) * 100) : 0
-        const sprint = sprints.find(s => s.id === viewingRun.sprint_id)
-        const plan = testPlans.find(p => p.id === viewingRun.plan_id)
-        return (
-          <Drawer title={viewingRun.name} onClose={() => setViewingRun(null)}>
-            <DetailRow label="Sprint" value={sprint?.name || '—'} />
-            <DetailRow label="Test plan" value={plan?.name || '—'} />
-            <DetailRow label="Created" value={new Date(viewingRun.created_at).toLocaleDateString()} />
-            <div style={{ marginBottom: 16 }}>
-              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Progress</p>
-              <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 13 }}>
-                <span style={{ color: '#15803d' }}>✓ {passed} pass</span>
-                <span style={{ color: '#dc2626' }}>✗ {failed} fail</span>
-                <span style={{ color: '#ca8a04' }}>— {skipped} skip</span>
-                <span style={{ color: '#9ca3af' }}>• {untested} untested</span>
-              </div>
-              <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: '#16a34a', transition: 'width 0.3s' }} />
-              </div>
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>{pct}% complete</p>
-            </div>
-            <div>
-              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Test cases ({vRunCases.length})</p>
-              {vRunCases.map((tc, i) => {
-                const st = vResults[tc.id] || 'untested'
-                const stColors: Record<string, {bg: string; color: string}> = { pass: {bg:'#dcfce7',color:'#15803d'}, fail: {bg:'#fee2e2',color:'#dc2626'}, skip: {bg:'#fef9c3',color:'#ca8a04'}, untested: {bg:'#f3f4f6',color:'#6b7280'} }
-                return (
-                  <div key={tc.id} onClick={() => setViewingRunCase({...tc, sectionName: tc.sectionName})}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', cursor: 'pointer', borderRadius: 6 }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='#f9fafb'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}>
-                    <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 48 }}>TC-{tc.id.slice(0,5).toUpperCase()}</span>
-                    <span style={{ fontSize: 13, flex: 1, textDecoration: 'underline', textDecorationColor: '#d1d5db' }}>{tc.title}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: stColors[st].bg, color: stColors[st].color }}>{st}</span>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>→</span>
-                  </div>
-                )
-              })}
-            </div>
-            <button onClick={() => { setActiveRun(viewingRun.id); setViewingRun(null) }}
-              style={{ marginTop: 16, width: '100%', background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
-              ▶ Execute this run
-            </button>
-          </Drawer>
-        )
-      })()}
     </div>
   )
 }
