@@ -339,3 +339,30 @@ end $$;
 --   delete from auth.users where email_confirmed_at is null
 --   and created_at < now() - interval '30 minutes';
 -- $$);
+
+-- ── Test case attachments (Batch 2b) ─────────────────────────
+ALTER TABLE test_cases ADD COLUMN IF NOT EXISTS attachments text[] DEFAULT '{}';
+
+-- ── Execution history (Batch 2b) ─────────────────────────────
+CREATE TABLE IF NOT EXISTS execution_history (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  test_run_id uuid REFERENCES test_runs(id) ON DELETE CASCADE NOT NULL,
+  test_case_id text NOT NULL,
+  status text NOT NULL CHECK (status IN ('pass','fail','skip')),
+  comment text DEFAULT '',
+  executed_by uuid REFERENCES auth.users,
+  executed_at timestamptz DEFAULT now()
+);
+ALTER TABLE execution_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Workspace members access execution_history" ON execution_history FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM test_runs tr
+    JOIN projects p ON p.id = tr.project_id
+    JOIN workspace_members wm ON wm.workspace_id = p.workspace_id
+    WHERE tr.id = execution_history.test_run_id
+    AND wm.user_id = auth.uid() AND wm.status = 'active'
+  )
+);
+
+-- ── Unique project name per workspace ─────────────────────────
+ALTER TABLE projects ADD CONSTRAINT IF NOT EXISTS projects_name_workspace_unique UNIQUE (workspace_id, name);
