@@ -614,42 +614,23 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
         <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />
       )}
 
-      {/* Comment modal — at RunsTab level so it's never clipped */}
+      {/* Comment modal — FailCommentModal handles all statuses + bug linking */}
       {commentModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: 16 }}>
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', width: '100%', maxWidth: 420, padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <span style={{ fontSize: 14, fontWeight: 600 }}>
-                Mark as {commentModal.status === 'pass' ? '✓ Pass' : commentModal.status === 'fail' ? '✗ Fail' : '— Skip'}
-              </span>
-              {(() => {
-                const sc = ({pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}} as Record<string,{bg:string;color:string}>)[commentModal.status]
-                return <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{commentModal.status}</span>
-              })()}
-            </div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>
-              Comment <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span>
-            </label>
-            <textarea value={commentText} onChange={e => setCommentText(e.target.value)}
-              placeholder="e.g. 'Failed on Chrome only, passed on Firefox'"
-              rows={3} autoFocus
-              style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
-              <button onClick={() => setCommentModal(null)} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
-              {(() => {
-                const sc = ({pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}} as Record<string,{bg:string;color:string}>)[commentModal.status]
-                return (
-                  <button onClick={() => {
-                    updateResult(commentModal.runId, commentModal.caseId, commentModal.status, commentText)
-                    setCommentModal(null)
-                  }} style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.color}`, borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                    Confirm {commentModal.status}
-                  </button>
-                )
-              })()}
-            </div>
-          </div>
-        </div>
+        <FailCommentModal
+          status={commentModal.status}
+          runId={commentModal.runId}
+          caseId={commentModal.caseId}
+          allBugs={bugs}
+          projectId={projectId}
+          sprints={sprints}
+          runs={runs}
+          cases={cases}
+          onConfirm={(comment) => {
+            updateResult(commentModal.runId, commentModal.caseId, commentModal.status, comment)
+            setCommentModal(null)
+          }}
+          onClose={() => setCommentModal(null)}
+        />
       )}
 
 
@@ -1528,4 +1509,4 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
   )
 }
 
-// fail-modal
+// bug-modal
