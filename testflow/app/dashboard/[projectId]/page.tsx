@@ -1226,7 +1226,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
             )
           })}
           {(() => {
-            const runBugs = bugs.filter((b: any) => b.test_run_id === data.id)
+            const runBugs = bugs.filter((b: any) => b.test_run_id === data.id && b.test_run_id !== null)
             if (runBugs.length === 0) return null
             const sevCfgR: Record<string, {bg:string;color:string}> = {critical:{bg:'#fef2f2',color:'#b91c1c'},high:{bg:'#fff7ed',color:'#c2410c'},medium:{bg:'#fffbeb',color:'#d97706'},low:{bg:'#f0fdf4',color:'#15803d'}}
             const stCfgR: Record<string, {bg:string;color:string;label:string}> = {open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"}}
@@ -1386,4 +1386,144 @@ const sectionLabel: React.CSSProperties = { margin: '0 0 8px', fontSize: 11, fon
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline' }
 const bugLinkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline', textAlign: 'left' as const }
 
-// v4
+// ─── Fail Comment Modal ───────────────────────────────────────────────────────
+function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, runs, cases, onConfirm, onClose }: {
+  status: RunStatus; runId: string; caseId: string
+  allBugs: any[]; projectId: string; sprints: any[]; runs: any[]; cases: any[]
+  onConfirm: (comment: string, bugId?: string) => void
+  onClose: () => void
+}) {
+  const [comment, setComment] = useState('')
+  const [bugAction, setBugAction] = useState<'none' | 'link' | 'create'>('none')
+  const [bugSearch, setBugSearch] = useState('')
+  const [selectedBugId, setSelectedBugId] = useState('')
+  const [newBugTitle, setNewBugTitle] = useState('')
+  const [creating, setCreating] = useState(false)
+  const sb = createClient()
+
+  const sc = ({pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}} as any)[status]
+
+  // Filter bugs by search
+  const filteredBugs = allBugs.filter(b => {
+    const q = bugSearch.toLowerCase()
+    return b.title.toLowerCase().includes(q) || b.id.slice(0,8).toUpperCase().includes(q.toUpperCase())
+  }).slice(0, 10)
+
+  const handleConfirm = async () => {
+    setCreating(true)
+    let bugId = selectedBugId || undefined
+
+    // Create new bug if needed
+    if (bugAction === 'create' && newBugTitle.trim()) {
+      const tc = cases.find(c => c.id === caseId)
+      const { data: newBug } = await sb.from('bugs').insert({
+        title: newBugTitle.trim(),
+        description: comment.trim(),
+        severity: 'medium',
+        status: 'open',
+        priority: 'medium',
+        project_id: projectId,
+        test_run_id: runId,
+        test_case_id: caseId,
+      }).select().single()
+      bugId = newBug?.id
+    }
+
+    onConfirm(comment, bugId)
+    setCreating(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>
+            Mark as {status === 'pass' ? '✓ Pass' : status === 'fail' ? '✗ Fail' : '— Skip'}
+          </span>
+          <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{status}</span>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          {/* Comment */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>
+              Comment <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span>
+            </label>
+            <textarea value={comment} onChange={e => setComment(e.target.value)}
+              placeholder="e.g. Failed on Chrome only, passed on Firefox"
+              rows={3} autoFocus
+              style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+          </div>
+
+          {/* Bug linking — only for fail */}
+          {status === 'fail' && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 8 }}>Bug (optional)</label>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                <button onClick={() => setBugAction('none')}
+                  style={{ flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6, border: `1px solid ${bugAction === 'none' ? '#111' : '#d1d5db'}`, background: bugAction === 'none' ? '#111' : '#fff', color: bugAction === 'none' ? '#fff' : '#374151', fontWeight: bugAction === 'none' ? 600 : 400 }}>
+                  No bug
+                </button>
+                <button onClick={() => setBugAction('link')}
+                  style={{ flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6, border: `1px solid ${bugAction === 'link' ? '#2563eb' : '#d1d5db'}`, background: bugAction === 'link' ? '#eff6ff' : '#fff', color: bugAction === 'link' ? '#2563eb' : '#374151', fontWeight: bugAction === 'link' ? 600 : 400 }}>
+                  Link existing
+                </button>
+                <button onClick={() => setBugAction('create')}
+                  style={{ flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6, border: `1px solid ${bugAction === 'create' ? '#dc2626' : '#d1d5db'}`, background: bugAction === 'create' ? '#fef2f2' : '#fff', color: bugAction === 'create' ? '#dc2626' : '#374151', fontWeight: bugAction === 'create' ? 600 : 400 }}>
+                  + New bug
+                </button>
+              </div>
+
+              {/* Link existing bug */}
+              {bugAction === 'link' && (
+                <div>
+                  <input value={bugSearch} onChange={e => { setBugSearch(e.target.value); setSelectedBugId('') }}
+                    placeholder="Search by title or ID..."
+                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, marginBottom: 8 }} />
+                  <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 7 }}>
+                    {filteredBugs.length === 0 && <p style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', margin: 0 }}>No bugs found</p>}
+                    {filteredBugs.map((bug, i) => {
+                      const sevC: any = {critical:'#b91c1c',high:'#c2410c',medium:'#d97706',low:'#15803d'}
+                      const stC: any = {open:'#dc2626',in_progress:'#2563eb',resolved:'#15803d',closed:'#374151',wont_fix:'#7c3aed'}
+                      return (
+                        <div key={bug.id} onClick={() => setSelectedBugId(bug.id)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', background: selectedBugId === bug.id ? '#eff6ff' : '#fff' }}>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: selectedBugId === bug.id ? 600 : 400 }}>🐛 {bug.title}</p>
+                            <p style={{ margin: 0, fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>{bug.id.slice(0,8).toUpperCase()}</p>
+                          </div>
+                          <span style={{ fontSize: 10, color: sevC[bug.severity], fontWeight: 600 }}>{bug.severity}</span>
+                          <span style={{ fontSize: 10, color: stC[bug.status], fontWeight: 600 }}>{bug.status.replace('_',' ')}</span>
+                          {selectedBugId === bug.id && <span style={{ color: '#2563eb', fontSize: 14 }}>✓</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {selectedBugId && <p style={{ fontSize: 12, color: '#2563eb', margin: '6px 0 0' }}>✓ Bug selected</p>}
+                </div>
+              )}
+
+              {/* Create new bug */}
+              {bugAction === 'create' && (
+                <div>
+                  <input value={newBugTitle} onChange={e => setNewBugTitle(e.target.value)}
+                    placeholder="Bug title..."
+                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const }} />
+                  <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>A new bug will be created and linked to this test case and run.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={handleConfirm} disabled={creating || (bugAction === 'create' && !newBugTitle.trim())}
+              style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.color}`, borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: creating ? 'not-allowed' : 'pointer', opacity: creating ? 0.6 : 1 }}>
+              {creating ? 'Saving...' : `Confirm ${status}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
