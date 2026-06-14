@@ -856,39 +856,57 @@ function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResul
         const cur = (results[tc.id] || 'untested') as RunStatus
         const isSelected = selected.includes(tc.id)
         const sc = statusColors[cur]
+        const hist = execHistory.filter((h: any) => h.test_case_id === tc.id).slice(0, 5)
+        const hc: Record<string, {bg:string;color:string}> = {
+          pass:{bg:'#dcfce7',color:'#15803d'},
+          fail:{bg:'#fee2e2',color:'#dc2626'},
+          skip:{bg:'#fef9c3',color:'#ca8a04'},
+        }
         return (
-          <div key={tc.id} style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px',
-            borderTop: '1px solid #f3f4f6',
-            background: isSelected ? '#eff6ff' : 'transparent',
-            transition: 'background 0.1s',
-          }}>
-            <input type="checkbox" checked={isSelected} onChange={() => toggleOne(tc.id)} style={{ cursor: 'pointer', flexShrink: 0 }} />
-            <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
-            <button onClick={() => onViewCase(tc)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, flex: 1, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{tc.title}</button>
-            <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
-
-            {/* Current status badge + individual buttons */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: sc.bg, color: sc.color, minWidth: 54, textAlign: 'center' }}>
-                {cur}
-              </span>
-              <div style={{ display: 'flex', gap: 3 }}>
-                {(['pass', 'fail', 'skip'] as const).map(s => (
-                  <button key={s} onClick={() => onShowComment(run.id, tc.id, s)}
-                    title={s}
-                    style={{
-                      width: 24, height: 24, fontSize: 12, cursor: 'pointer',
-                      borderRadius: 4, border: `1px solid ${cur === s ? statusColors[s].color : '#e5e7eb'}`,
-                      background: cur === s ? statusColors[s].bg : '#fff',
-                      color: cur === s ? statusColors[s].color : '#9ca3af',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                    {s === 'pass' ? '✓' : s === 'fail' ? '✗' : '–'}
-                  </button>
-                ))}
+          <div key={tc.id}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px',
+              borderTop: '1px solid #f3f4f6',
+              background: isSelected ? '#eff6ff' : 'transparent',
+              transition: 'background 0.1s',
+            }}>
+              <input type="checkbox" checked={isSelected} onChange={() => toggleOne(tc.id)} style={{ cursor: 'pointer', flexShrink: 0 }} />
+              <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+              <button onClick={() => onViewCase(tc)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, flex: 1, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{tc.title}</button>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: sc.bg, color: sc.color, minWidth: 54, textAlign: 'center' }}>
+                  {cur}
+                </span>
+                <div style={{ display: 'flex', gap: 3 }}>
+                  {(['pass', 'fail', 'skip'] as const).map(s => (
+                    <button key={s} onClick={() => onShowComment(run.id, tc.id, s)}
+                      title={s}
+                      style={{
+                        width: 24, height: 24, fontSize: 12, cursor: 'pointer',
+                        borderRadius: 4, border: `1px solid ${cur === s ? statusColors[s].color : '#e5e7eb'}`,
+                        background: cur === s ? statusColors[s].bg : '#fff',
+                        color: cur === s ? statusColors[s].color : '#9ca3af',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                      {s === 'pass' ? '✓' : s === 'fail' ? '✗' : '–'}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
+            {hist.length > 0 && (
+              <div style={{ padding: '5px 16px 8px 58px', background: '#fafafa', borderTop: '1px solid #f9fafb' }}>
+                <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution History</p>
+                {hist.map((h: any) => (
+                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                    <span style={{ background: (hc[h.status]||{bg:'#f3f4f6',color:'#6b7280'}).bg, color: (hc[h.status]||{bg:'#f3f4f6',color:'#6b7280'}).color, fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 3, minWidth: 34, textAlign: 'center' as const }}>{h.status}</span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(h.executed_at).toLocaleString()}</span>
+                    {h.comment && <span style={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>"{h.comment}"</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )
       })}
@@ -1367,3 +1385,5 @@ function DDCard({ children, onClick, last }: { children: React.ReactNode; onClic
 const sectionLabel: React.CSSProperties = { margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline' }
 const bugLinkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline', textAlign: 'left' as const }
+
+// v4
