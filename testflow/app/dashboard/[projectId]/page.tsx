@@ -327,7 +327,10 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase }:
         <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
           {total} test case{total !== 1 ? 's' : ''} · {sections.length} section{sections.length !== 1 ? 's' : ''}
         </p>
-        {canEditCases(myRole) && <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Btn onClick={() => setShowImportExport(true)} sm>↕ Import / Export</Btn>
+          {canEditCases(myRole) && <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>}
+        </div>
       </div>
 
       {addingSection && (
@@ -1364,5 +1367,3 @@ function DDCard({ children, onClick, last }: { children: React.ReactNode; onClic
 const sectionLabel: React.CSSProperties = { margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline' }
 const bugLinkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline', textAlign: 'left' as const }
-
-// batch2-marker

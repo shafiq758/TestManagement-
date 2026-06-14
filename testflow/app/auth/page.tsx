@@ -679,3 +679,6 @@ const s: Record<string, React.CSSProperties> = {
   toggle: { fontSize: 13, textAlign: 'center', marginTop: 14, color: '#6b7280' },
   link: { background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontWeight: 500, fontSize: 13, padding: 0, textDecoration: 'underline' },
 }
+
+// v3
+// v3

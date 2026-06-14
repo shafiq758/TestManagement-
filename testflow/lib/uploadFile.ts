@@ -45,3 +45,6 @@ export async function uploadFile(file: File, folder: string = 'bugs'): Promise<U
 export async function uploadFiles(files: File[], folder: string = 'bugs'): Promise<UploadResult[]> {
   return Promise.all(files.map(f => uploadFile(f, folder)))
 }
+
+// v3
+// v3
