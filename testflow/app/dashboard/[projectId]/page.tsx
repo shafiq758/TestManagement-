@@ -1379,6 +1379,13 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
   const [bugSearch, setBugSearch] = useState('')
   const [selectedBugId, setSelectedBugId] = useState('')
   const [newBugTitle, setNewBugTitle] = useState('')
+  const [newBugSeverity, setNewBugSeverity] = useState('medium')
+  const [newBugPriority, setNewBugPriority] = useState('medium')
+  const [newBugStatus, setNewBugStatus] = useState('open')
+  const [newBugDescription, setNewBugDescription] = useState('')
+  const [newBugSteps, setNewBugSteps] = useState('')
+  const [newBugExpected, setNewBugExpected] = useState('')
+  const [newBugActual, setNewBugActual] = useState('')
   const [creating, setCreating] = useState(false)
   const sb = createClient()
 
@@ -1396,16 +1403,20 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
 
     // Create new bug if needed
     if (bugAction === 'create' && newBugTitle.trim()) {
-      const tc = cases.find(c => c.id === caseId)
+      const { data: { session } } = await sb.auth.getSession()
       const { data: newBug } = await sb.from('bugs').insert({
         title: newBugTitle.trim(),
-        description: comment.trim(),
-        severity: 'medium',
-        status: 'open',
-        priority: 'medium',
+        description: newBugDescription.trim() || comment.trim(),
+        steps: newBugSteps.trim(),
+        expected_result: newBugExpected.trim(),
+        actual_result: newBugActual.trim(),
+        severity: newBugSeverity,
+        status: newBugStatus,
+        priority: newBugPriority,
         project_id: projectId,
         test_run_id: runId,
         test_case_id: caseId,
+        created_by: session?.user?.id,
       }).select().single()
       bugId = newBug?.id
     }
@@ -1484,13 +1495,71 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
                 </div>
               )}
 
-              {/* Create new bug */}
+              {/* Create new bug — full form */}
               {bugAction === 'create' && (
-                <div>
-                  <input value={newBugTitle} onChange={e => setNewBugTitle(e.target.value)}
-                    placeholder="Bug title..."
-                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const }} />
-                  <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>A new bug will be created and linked to this test case and run.</p>
+                <div style={{ border: '1px solid #fecaca', borderRadius: 8, padding: 14, background: '#fff5f5' }}>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Title *</label>
+                    <input value={newBugTitle} onChange={e => setNewBugTitle(e.target.value)}
+                      placeholder="Brief summary of the bug"
+                      style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, background: '#fff' }} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Severity</label>
+                      <select value={newBugSeverity} onChange={e => setNewBugSeverity(e.target.value)}
+                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 8px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }}>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Priority</label>
+                      <select value={newBugPriority} onChange={e => setNewBugPriority(e.target.value)}
+                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 8px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }}>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Status</label>
+                      <select value={newBugStatus} onChange={e => setNewBugStatus(e.target.value)}
+                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 8px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }}>
+                        <option value="open">Open</option>
+                        <option value="in_progress">In Progress</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Description</label>
+                    <textarea value={newBugDescription} onChange={e => setNewBugDescription(e.target.value)}
+                      placeholder="What went wrong?"
+                      rows={2} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Steps to reproduce</label>
+                    <textarea value={newBugSteps} onChange={e => setNewBugSteps(e.target.value)}
+                      placeholder="1. Go to... 2. Click... 3. Observe..."
+                      rows={3} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Expected result</label>
+                      <textarea value={newBugExpected} onChange={e => setNewBugExpected(e.target.value)}
+                        placeholder="What should happen?"
+                        rows={2} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Actual result</label>
+                      <textarea value={newBugActual} onChange={e => setNewBugActual(e.target.value)}
+                        placeholder="What actually happened?"
+                        rows={2} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 11, color: '#9ca3af', margin: '8px 0 0' }}>Bug will be linked to this test case and run automatically.</p>
                 </div>
               )}
             </div>
@@ -1509,4 +1578,4 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
   )
 }
 
-// bug-modal
+// full-bug-form
