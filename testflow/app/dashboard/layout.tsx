@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useInactivity } from '@/lib/useInactivity'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
@@ -101,10 +101,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (activeId === projectId) router.push('/dashboard')
   }
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await createClient().auth.signOut()
     router.replace('/auth')
-  }
+  }, [router])
 
   const { showWarning, secondsLeft, reset } = useInactivity(logout)
 

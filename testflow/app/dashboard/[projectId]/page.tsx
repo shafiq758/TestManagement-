@@ -7,6 +7,7 @@ import MilestonesTab from '@/components/MilestonesTab'
 import SprintsTab from '@/components/SprintsTab'
 import BugsTab from '@/components/BugsTab'
 import AttachmentUploader, { type Attachment } from '@/components/AttachmentUploader'
+import ImportExportModal from '@/components/ImportExportModal'
 import type { Bug } from '@/types'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
@@ -295,6 +296,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase }:
   const [addingCaseTo, setAddingCaseTo] = useState<string | null>(null)
   const [editingCase, setEditingCase] = useState<TestCase | null>(null)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [showImportExport, setShowImportExport] = useState(false)
   const canEdit = canEditCases(myRole)
   const sb = createClient()
 
@@ -401,6 +403,12 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase }:
         <CaseModal title="Add test case" projectId={projectId} sectionId={addingCaseTo}
           onSave={() => { setAddingCaseTo(null); onRefresh() }} onClose={() => setAddingCaseTo(null)} />
       )}
+      {showImportExport && (
+        <ImportExportModal
+          projectId={projectId} sections={sections} cases={cases}
+          onRefresh={onRefresh} onClose={() => setShowImportExport(false)}
+        />
+      )}
       {editingCase && (
         <CaseModal title="Edit test case" projectId={projectId} sectionId={editingCase.section_id}
           initial={editingCase}
@@ -478,6 +486,8 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
 function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh, onViewRun, onViewRunCase, bugs, execHistory }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewRun: (run: TestRun) => void; onViewRunCase: (tc: any, results: Record<string, RunStatus>, runId: string, bugs?: any[]) => void; bugs: any[]; execHistory: any[] }) {
   const [creating, setCreating] = useState(false)
   const [activeRun, setActiveRun] = useState<string | null>(null)
+  const [commentModal, setCommentModal] = useState<{runId: string; caseId: string; status: RunStatus} | null>(null)
+  const [commentText, setCommentText] = useState('')
   const sb = createClient()
 
   const createRun = async (name: string, caseIds: string[], sprintId: string, planId: string) => {
@@ -590,7 +600,8 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
                 execHistory={execHistory.filter(h => h.test_run_id === run.id)}
                 bugs={bugs}
                 onUpdateResult={updateResult} onBulkUpdate={bulkUpdateResults}
-                onViewCase={(tc) => onViewRunCase(tc, results, run.id, bugs)} />
+                onViewCase={(tc) => onViewRunCase(tc, results, run.id, bugs)}
+                onShowComment={(runId, caseId, status) => { setCommentModal({runId, caseId, status}); setCommentText('') }} />
             )}
           </div>
         )
@@ -598,6 +609,44 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
 
       {creating && (
         <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />
+      )}
+
+      {/* Comment modal — at RunsTab level so it's never clipped */}
+      {commentModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', width: '100%', maxWidth: 420, padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>
+                Mark as {commentModal.status === 'pass' ? '✓ Pass' : commentModal.status === 'fail' ? '✗ Fail' : '— Skip'}
+              </span>
+              {(() => {
+                const sc = ({pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}} as Record<string,{bg:string;color:string}>)[commentModal.status]
+                return <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{commentModal.status}</span>
+              })()}
+            </div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>
+              Comment <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span>
+            </label>
+            <textarea value={commentText} onChange={e => setCommentText(e.target.value)}
+              placeholder="e.g. 'Failed on Chrome only, passed on Firefox'"
+              rows={3} autoFocus
+              style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+              <button onClick={() => setCommentModal(null)} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
+              {(() => {
+                const sc = ({pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}} as Record<string,{bg:string;color:string}>)[commentModal.status]
+                return (
+                  <button onClick={() => {
+                    updateResult(commentModal.runId, commentModal.caseId, commentModal.status, commentText)
+                    setCommentModal(null)
+                  }} style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.color}`, borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                    Confirm {commentModal.status}
+                  </button>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
       )}
 
 
@@ -733,7 +782,7 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
 
 // ─── Run Execution with bulk selection ───────────────────────────────────────
 
-function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResult, onBulkUpdate, onViewCase }: {
+function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResult, onBulkUpdate, onViewCase, onShowComment }: {
   run: TestRun
   runCases: any[]
   results: Record<string, RunStatus>
@@ -742,10 +791,9 @@ function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResul
   onUpdateResult: (runId: string, caseId: string, status: RunStatus, comment?: string) => void
   onBulkUpdate: (runId: string, caseIds: string[], status: RunStatus) => void
   onViewCase: (tc: any) => void
+  onShowComment: (runId: string, caseId: string, status: RunStatus) => void
 }) {
   const [selected, setSelected] = useState<string[]>([])
-  const [commentModal, setCommentModal] = useState<{caseId: string; status: RunStatus} | null>(null)
-  const [comment, setComment] = useState('')
   const allSelected = selected.length === runCases.length && runCases.length > 0
   const someSelected = selected.length > 0
 
@@ -824,7 +872,7 @@ function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResul
               </span>
               <div style={{ display: 'flex', gap: 3 }}>
                 {(['pass', 'fail', 'skip'] as const).map(s => (
-                  <button key={s} onClick={() => { setCommentModal({caseId: tc.id, status: s}); setComment('') }}
+                  <button key={s} onClick={() => onShowComment(run.id, tc.id, s)}
                     title={s}
                     style={{
                       width: 24, height: 24, fontSize: 12, cursor: 'pointer',
