@@ -78,10 +78,16 @@ export default function ReportsPage() {
   const [exporting, setExporting] = useState(false)
   const [selectedSprintIds, setSelectedSprintIds] = useState<string[]>([]) // empty = all sprints
   const [showSprintFilter, setShowSprintFilter] = useState(false)
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]) // empty = all runs
+  const [showRunFilter, setShowRunFilter] = useState(false)
 
   // Toggle sprint selection
   const toggleSprint = (id: string) => setSelectedSprintIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
   const clearSprintFilter = () => setSelectedSprintIds([])
+
+  // Toggle run selection
+  const toggleRun = (id: string) => setSelectedRunIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const clearRunFilter = () => setSelectedRunIds([])
   const sb = createClient()
 
   useEffect(() => { load() }, [projectId])
@@ -175,13 +181,39 @@ export default function ReportsPage() {
 
     autoTable(doc, {
       startY: runsY + 4,
-      head: [['Run Name', 'Total', 'Pass', 'Fail', 'Skip', 'Untested', 'Pass %']],
-      body: data.runs.map(run => {
+      head: [['Run Name', 'Sprint', 'Total', 'Pass', 'Fail', 'Skip', 'Untested', 'Pass %']],
+      body: filteredRuns.map((run: any) => {
         const s = runStats(run)
-        return [run.name, s.total, s.pass, s.fail, s.skip, s.untested, `${s.pct}%`]
+        const sprint = data.sprints.find((sp: any) => sp.id === run.sprint_id)
+        return [run.name, sprint?.name || '—', s.total, s.pass, s.fail, s.skip, s.untested, `${s.pct}%`]
       }),
       theme: 'striped',
     })
+
+    // Per-run detailed breakdown
+    if (filteredRuns.length > 0 && filteredRuns.length <= 10) {
+      filteredRuns.forEach((run: any) => {
+        const runCaseIds = run.case_ids || []
+        const runResults = run.results || {}
+        const failedCases = runCaseIds.filter((id: string) => runResults[id] === 'fail')
+        if (failedCases.length === 0) return
+        const detailY = (doc as any).lastAutoTable.finalY + 8
+        doc.setFontSize(11)
+        doc.text(`Failed cases in: ${run.name}`, 14, detailY)
+        autoTable(doc, {
+          startY: detailY + 4,
+          head: [['Case ID', 'Title', 'Comment']],
+          body: failedCases.map((caseId: string) => {
+            const tc = data.cases.find((c: any) => c.id === caseId)
+            const hist = data.execHistory.filter((h: any) => h.test_case_id === caseId && h.test_run_id === run.id && h.status === 'fail')
+            const lastComment = hist[hist.length - 1]?.comment || ''
+            return [`TC-${caseId.slice(0,5).toUpperCase()}`, tc?.title || '—', lastComment]
+          }),
+          theme: 'striped',
+          styles: { fontSize: 10 },
+        })
+      })
+    }
 
     // Bugs table
     if (data.bugs.length > 0) {
@@ -215,9 +247,13 @@ export default function ReportsPage() {
   const activeSprintIds = new Set(activeSprints.map(s => s.id))
 
   // Filter runs, bugs, plans by selected sprints
-  const filteredRuns = selectedSprintIds.length > 0
-    ? data.runs.filter(r => r.sprint_id && activeSprintIds.has(r.sprint_id))
+  const sprintFilteredRuns = selectedSprintIds.length > 0
+    ? data.runs.filter((r: any) => r.sprint_id && activeSprintIds.has(r.sprint_id))
     : data.runs
+
+  const filteredRuns = selectedRunIds.length > 0
+    ? sprintFilteredRuns.filter((r: any) => selectedRunIds.includes(r.id))
+    : sprintFilteredRuns
 
   const filteredBugs = selectedSprintIds.length > 0
     ? data.bugs.filter(b => b.sprint_id && activeSprintIds.has(b.sprint_id))
@@ -319,6 +355,51 @@ export default function ReportsPage() {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Reports — {data.project.name}</h1>
           </div>
           <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
+            {/* Run filter */}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowRunFilter(p => !p)}
+                style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', background: selectedRunIds.length > 0 ? '#fef9c3' : '#fff', color: selectedRunIds.length > 0 ? '#ca8a04' : '#374151', fontWeight: selectedRunIds.length > 0 ? 600 : 400 }}>
+                ▶ {selectedRunIds.length === 0 ? 'All runs' : `${selectedRunIds.length} run${selectedRunIds.length !== 1 ? 's' : ''} selected`} ▾
+              </button>
+              {showRunFilter && (
+                <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 260, padding: 8, maxHeight: 320, overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px 8px', borderBottom: '1px solid #f3f4f6', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Filter by run</span>
+                    {selectedRunIds.length > 0 && (
+                      <button onClick={clearRunFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#2563eb', fontFamily: 'inherit' }}>Clear all</button>
+                    )}
+                  </div>
+                  {sprintFilteredRuns.map((run: any) => {
+                    const sprint = data.sprints.find((s: any) => s.id === run.sprint_id)
+                    const s = runStats(run)
+                    const isSelected = selectedRunIds.includes(run.id)
+                    return (
+                      <div key={run.id} onClick={() => toggleRun(run.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', borderRadius: 6, background: isSelected ? '#fef9c3' : 'transparent' }}
+                        onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = '#f9fafb' }}
+                        onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                        <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${isSelected ? '#ca8a04' : '#d1d5db'}`, background: isSelected ? '#ca8a04' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {isSelected && <span style={{ color: '#fff', fontSize: 10, fontWeight: 700 }}>✓</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ margin: '0 0 1px', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{run.name}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{sprint?.name || 'No sprint'} · {s.pct}% pass</p>
+                        </div>
+                        <span style={{ fontSize: 11, color: s.pct >= 80 ? PASS_COLOR : s.pct >= 50 ? '#d97706' : FAIL_COLOR, fontWeight: 600 }}>{s.pct}%</span>
+                      </div>
+                    )
+                  })}
+                  {sprintFilteredRuns.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', padding: '8px 10px', margin: 0 }}>No runs yet.</p>}
+                  <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 6, paddingTop: 8 }}>
+                    <button onClick={() => setShowRunFilter(false)}
+                      style={{ width: '100%', background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 0', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Sprint filter */}
             <div style={{ position: 'relative' }}>
               <button onClick={() => setShowSprintFilter(p => !p)}
@@ -371,12 +452,20 @@ export default function ReportsPage() {
           </div>
         </div>
         {/* Sprint filter active banner */}
-        {selectedSprintIds.length > 0 && (
-          <div style={{ padding: '6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, background: '#eff6ff', color: '#2563eb', padding: '2px 10px', borderRadius: 5, fontWeight: 500 }}>
-              🏃 Filtered: {activeSprints.map((s: any) => s.name).join(', ')}
-            </span>
-            <button onClick={clearSprintFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#9ca3af', fontFamily: 'inherit' }}>✕ Clear</button>
+        {(selectedSprintIds.length > 0 || selectedRunIds.length > 0) && (
+          <div style={{ padding: '6px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {selectedSprintIds.length > 0 && (
+              <span style={{ fontSize: 12, background: '#eff6ff', color: '#2563eb', padding: '2px 10px', borderRadius: 5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                🏃 {activeSprints.map((s: any) => s.name).join(', ')}
+                <button onClick={clearSprintFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#93c5fd', fontFamily: 'inherit', padding: 0 }}>✕</button>
+              </span>
+            )}
+            {selectedRunIds.length > 0 && (
+              <span style={{ fontSize: 12, background: '#fef9c3', color: '#ca8a04', padding: '2px 10px', borderRadius: 5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
+                ▶ {selectedRunIds.length} run{selectedRunIds.length !== 1 ? 's' : ''} selected
+                <button onClick={clearRunFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#fbbf24', fontFamily: 'inherit', padding: 0 }}>✕</button>
+              </span>
+            )}
           </div>
         )}
         {/* Tabs */}
