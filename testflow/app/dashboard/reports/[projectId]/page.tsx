@@ -76,6 +76,12 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'runs' | 'coverage' | 'bugs' | 'sprints'>('overview')
   const [exporting, setExporting] = useState(false)
+  const [selectedSprintIds, setSelectedSprintIds] = useState<string[]>([]) // empty = all sprints
+  const [showSprintFilter, setShowSprintFilter] = useState(false)
+
+  // Toggle sprint selection
+  const toggleSprint = (id: string) => setSelectedSprintIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const clearSprintFilter = () => setSelectedSprintIds([])
   const sb = createClient()
 
   useEffect(() => { load() }, [projectId])
@@ -201,15 +207,38 @@ export default function ReportsPage() {
   )
   if (!data) return null
 
+  // ── Filtered data based on selected sprints ─────────────────────────────────
+  const activeSprints = selectedSprintIds.length > 0
+    ? data.sprints.filter(s => selectedSprintIds.includes(s.id))
+    : data.sprints
+
+  const activeSprintIds = new Set(activeSprints.map(s => s.id))
+
+  // Filter runs, bugs, plans by selected sprints
+  const filteredRuns = selectedSprintIds.length > 0
+    ? data.runs.filter(r => r.sprint_id && activeSprintIds.has(r.sprint_id))
+    : data.runs
+
+  const filteredBugs = selectedSprintIds.length > 0
+    ? data.bugs.filter(b => b.sprint_id && activeSprintIds.has(b.sprint_id))
+    : data.bugs
+
+  const filteredPlans = selectedSprintIds.length > 0
+    ? data.plans.filter(p => p.sprint_id && activeSprintIds.has(p.sprint_id))
+    : data.plans
+
+  // Get all case IDs covered in filtered runs
+  const filteredRunCaseIds = new Set(filteredRuns.flatMap((r: any) => r.case_ids || []))
+
   // ── Computed values ─────────────────────────────────────────────────────────
   const totalCases = data.cases.length
-  const totalRuns = data.runs.length
-  const totalBugs = data.bugs.length
-  const openBugs = data.bugs.filter(b => b.status === 'open').length
+  const totalRuns = filteredRuns.length
+  const totalBugs = filteredBugs.length
+  const openBugs = filteredBugs.filter((b: any) => b.status === 'open').length
 
   // Overall pass/fail across all runs
   let totalPass = 0, totalFail = 0, totalSkip = 0, totalUntested = 0
-  data.runs.forEach(run => {
+  filteredRuns.forEach(run => {
     const s = runStats(run)
     totalPass += s.pass; totalFail += s.fail; totalSkip += s.skip; totalUntested += s.untested
   })
@@ -217,13 +246,16 @@ export default function ReportsPage() {
   const overallPct = overallTotal > 0 ? Math.round((totalPass / overallTotal) * 100) : 0
 
   // Trend data (pass % per run)
-  const trendData = data.runs.map(run => {
+  const trendData = filteredRuns.map((run: any) => {
     const s = runStats(run)
     return { name: run.name.length > 12 ? run.name.slice(0, 12) + '…' : run.name, pass: s.pass, fail: s.fail, skip: s.skip, untested: s.untested, pct: s.pct }
   })
 
   // Coverage: cases that have been executed at least once
-  const executedCaseIds = new Set(data.execHistory.map(h => h.test_case_id))
+  const filteredExecHistory = selectedSprintIds.length > 0
+    ? data.execHistory.filter(h => filteredRuns.some((r: any) => r.id === h.test_run_id))
+    : data.execHistory
+  const executedCaseIds = new Set(filteredExecHistory.map((h: any) => h.test_case_id))
   const coveredCases = data.cases.filter(c => executedCaseIds.has(c.id)).length
   const coveragePct = totalCases > 0 ? Math.round((coveredCases / totalCases) * 100) : 0
 
@@ -237,24 +269,24 @@ export default function ReportsPage() {
   // Bugs by severity
   const bugsBySeverity = ['critical', 'high', 'medium', 'low'].map(sev => ({
     name: sev.charAt(0).toUpperCase() + sev.slice(1),
-    value: data.bugs.filter(b => b.severity === sev).length,
+    value: filteredBugs.filter((b: any) => b.severity === sev).length,
     color: SEV_COLORS[sev],
   })).filter(b => b.value > 0)
 
   // Bugs by status
   const bugsByStatus = [
-    { name: 'Open', value: data.bugs.filter(b => b.status === 'open').length, color: '#dc2626' },
-    { name: 'In Progress', value: data.bugs.filter(b => b.status === 'in_progress').length, color: '#2563eb' },
-    { name: 'Resolved', value: data.bugs.filter(b => b.status === 'resolved').length, color: '#16a34a' },
-    { name: 'Closed', value: data.bugs.filter(b => b.status === 'closed').length, color: '#6b7280' },
-    { name: "Won't Fix", value: data.bugs.filter(b => b.status === 'wont_fix').length, color: '#7c3aed' },
+    { name: 'Open', value: filteredBugs.filter((b: any) => b.status === 'open').length, color: '#dc2626' },
+    { name: 'In Progress', value: filteredBugs.filter((b: any) => b.status === 'in_progress').length, color: '#2563eb' },
+    { name: 'Resolved', value: filteredBugs.filter((b: any) => b.status === 'resolved').length, color: '#16a34a' },
+    { name: 'Closed', value: filteredBugs.filter((b: any) => b.status === 'closed').length, color: '#6b7280' },
+    { name: "Won't Fix", value: filteredBugs.filter((b: any) => b.status === 'wont_fix').length, color: '#7c3aed' },
   ].filter(b => b.value > 0)
 
   // Sprint summary
-  const sprintSummary = data.sprints.map(sprint => {
-    const sprintPlans = data.plans.filter(p => p.sprint_id === sprint.id)
-    const sprintRuns = data.runs.filter(r => r.sprint_id === sprint.id)
-    const sprintBugs = data.bugs.filter(b => b.sprint_id === sprint.id)
+  const sprintSummary = activeSprints.map((sprint: any) => {
+    const sprintPlans = data.plans.filter((p: any) => p.sprint_id === sprint.id)
+    const sprintRuns = filteredRuns.filter((r: any) => r.sprint_id === sprint.id)
+    const sprintBugs = filteredBugs.filter((b: any) => b.sprint_id === sprint.id)
     let sprintPass = 0, sprintTotal = 0
     sprintRuns.forEach(run => { const s = runStats(run); sprintPass += s.pass; sprintTotal += s.total })
     return {
@@ -286,11 +318,67 @@ export default function ReportsPage() {
             </button>
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Reports — {data.project.name}</h1>
           </div>
-          <button onClick={handleExportPDF} disabled={exporting}
-            style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 500, cursor: exporting ? 'not-allowed' : 'pointer', opacity: exporting ? 0.6 : 1 }}>
-            {exporting ? 'Exporting…' : '⬇ Export PDF'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
+            {/* Sprint filter */}
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowSprintFilter(p => !p)}
+                style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', background: selectedSprintIds.length > 0 ? '#eff6ff' : '#fff', color: selectedSprintIds.length > 0 ? '#2563eb' : '#374151', fontWeight: selectedSprintIds.length > 0 ? 600 : 400 }}>
+                🏃 {selectedSprintIds.length === 0 ? 'All sprints' : `${selectedSprintIds.length} sprint${selectedSprintIds.length !== 1 ? 's' : ''} selected`} ▾
+              </button>
+              {showSprintFilter && (
+                <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 220, padding: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px 8px', borderBottom: '1px solid #f3f4f6', marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Filter by sprint</span>
+                    {selectedSprintIds.length > 0 && (
+                      <button onClick={clearSprintFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#2563eb', fontFamily: 'inherit' }}>Clear all</button>
+                    )}
+                  </div>
+                  {data.sprints.map(sprint => {
+                    const sc: Record<string,{bg:string;color:string}> = {
+                      planned:{bg:'#f3f4f6',color:'#374151'},
+                      active:{bg:'#dcfce7',color:'#15803d'},
+                      completed:{bg:'#dbeafe',color:'#1e40af'},
+                    }
+                    const ss = sc[sprint.status] || sc.planned
+                    const isSelected = selectedSprintIds.includes(sprint.id)
+                    return (
+                      <div key={sprint.id} onClick={() => toggleSprint(sprint.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', borderRadius: 6, background: isSelected ? '#eff6ff' : 'transparent' }}
+                        onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = '#f9fafb' }}
+                        onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}>
+                        <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${isSelected ? '#2563eb' : '#d1d5db'}`, background: isSelected ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {isSelected && <span style={{ color: '#fff', fontSize: 10, fontWeight: 700 }}>✓</span>}
+                        </div>
+                        <span style={{ fontSize: 13, flex: 1 }}>{sprint.name}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 3, background: ss.bg, color: ss.color }}>{sprint.status}</span>
+                      </div>
+                    )
+                  })}
+                  {data.sprints.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', padding: '8px 10px', margin: 0 }}>No sprints yet.</p>}
+                  <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 6, paddingTop: 8 }}>
+                    <button onClick={() => setShowSprintFilter(false)}
+                      style={{ width: '100%', background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 0', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <button onClick={handleExportPDF} disabled={exporting}
+              style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 500, cursor: exporting ? 'not-allowed' : 'pointer', opacity: exporting ? 0.6 : 1 }}>
+              {exporting ? 'Exporting…' : '⬇ Export PDF'}
+            </button>
+          </div>
         </div>
+        {/* Sprint filter active banner */}
+        {selectedSprintIds.length > 0 && (
+          <div style={{ padding: '6px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, background: '#eff6ff', color: '#2563eb', padding: '2px 10px', borderRadius: 5, fontWeight: 500 }}>
+              🏃 Filtered: {activeSprints.map((s: any) => s.name).join(', ')}
+            </span>
+            <button onClick={clearSprintFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#9ca3af', fontFamily: 'inherit' }}>✕ Clear</button>
+          </div>
+        )}
         {/* Tabs */}
         <div style={{ display: 'flex' }}>
           {(['overview', 'runs', 'coverage', 'bugs', 'sprints'] as const).map(t => (
@@ -383,7 +471,7 @@ export default function ReportsPage() {
             <div style={cardGrid}>
               <StatCard label="Total Runs" value={totalRuns} />
               <StatCard label="Total Executions" value={data.execHistory.length} />
-              <StatCard label="Avg Pass Rate" value={`${totalRuns > 0 ? Math.round(data.runs.reduce((sum, r) => sum + runStats(r).pct, 0) / totalRuns) : 0}%`} />
+              <StatCard label="Avg Pass Rate" value={`${totalRuns > 0 ? Math.round(filteredRuns.reduce((sum: number, r: any) => sum + runStats(r).pct, 0) / totalRuns) : 0}%`} />
             </div>
 
             {/* Bar chart: pass/fail per run */}
@@ -417,7 +505,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.runs.map((run, i) => {
+                  {filteredRuns.map((run: any, i: number) => {
                     const s = runStats(run)
                     return (
                       <tr key={run.id} style={{ borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
@@ -439,7 +527,7 @@ export default function ReportsPage() {
                       </tr>
                     )
                   })}
-                  {data.runs.length === 0 && (
+                  {filteredRuns.length === 0 && (
                     <tr><td colSpan={8} style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No test runs yet.</td></tr>
                   )}
                 </tbody>
@@ -582,7 +670,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.bugs.map((bug, i) => {
+                  {filteredBugs.map((bug: any, i: number) => {
                     const sprint = data.sprints.find(s => s.id === bug.sprint_id)
                     const sevC: Record<string,string> = {critical:'#b91c1c',high:'#c2410c',medium:'#d97706',low:'#16a34a'}
                     const stC: Record<string,string> = {open:'#dc2626',in_progress:'#2563eb',resolved:'#16a34a',closed:'#6b7280',wont_fix:'#7c3aed'}
@@ -597,7 +685,7 @@ export default function ReportsPage() {
                       </tr>
                     )
                   })}
-                  {data.bugs.length === 0 && (
+                  {filteredBugs.length === 0 && (
                     <tr><td colSpan={6} style={{ padding: '24px', textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>No bugs reported yet.</td></tr>
                   )}
                 </tbody>
