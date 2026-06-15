@@ -1090,7 +1090,11 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
       const runId = extra?.runId
       // Only show bugs when coming from run/plan context (extra.bugs set), not Test Cases tab
       const showBugs = extra?.bugs !== undefined
-      const linkedBugs = showBugs ? (extra.bugs as any[]).filter((b: any) => b.test_case_id === data.id) : []
+      const linkedBugs = showBugs ? (extra.bugs as any[]).filter((b: any) => {
+        const matchesCase = b.test_case_id === data.id
+        if (extra?.runId) return matchesCase && b.test_run_id === extra.runId
+        return matchesCase
+      }) : []
       const stCfg: Record<string, {bg:string;color:string;label:string}> = {
         open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},
         in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},
@@ -1578,4 +1582,4 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
   )
 }
 
-// full-bug-form
+// fix-bug-filter
