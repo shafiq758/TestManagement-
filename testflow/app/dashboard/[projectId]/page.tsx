@@ -234,6 +234,10 @@ export default function ProjectPage() {
               marginBottom: -1,
             }}>{label}</button>
           ))}
+          <a href={`/dashboard/reports/${projectId}`}
+            style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none', padding: '8px 16px', borderBottom: '2px solid transparent', display: 'inline-flex', alignItems: 'center', marginBottom: -1 }}>
+            📊 Reports
+          </a>
         </div>
       </div>
 
@@ -1624,3 +1628,5 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
     </div>
   )
 }
+
+// reports-link
