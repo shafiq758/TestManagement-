@@ -180,6 +180,7 @@ export default function ProjectPage() {
   const popNav = () => setNavStack(p => p.slice(0, -1))
   const goToIndex = (i: number) => setNavStack(p => p.slice(0, i + 1))
   const clearNav = () => setNavStack([])
+  const [globalCommentModal, setGlobalCommentModal] = useState<{runId: string; caseId: string; status: RunStatus} | null>(null)
 
   const sb = createClient()
 
@@ -267,7 +268,39 @@ export default function ProjectPage() {
         )}
       </div>
 
-            {/* ── Drill-down Detail Panel ── */}
+            {/* Global comment modal from drill-down */}
+      {globalCommentModal && (
+        <FailCommentModal
+          status={globalCommentModal.status}
+          runId={globalCommentModal.runId}
+          caseId={globalCommentModal.caseId}
+          allBugs={bugs}
+          projectId={projectId}
+          sprints={sprints}
+          runs={runs}
+          cases={cases}
+          onConfirm={async (comment) => {
+            const run = runs.find(r => r.id === globalCommentModal.runId)
+            if (!run) return
+            const sb = createClient()
+            const results = { ...run.results, [globalCommentModal.caseId]: globalCommentModal.status }
+            await sb.from('test_runs').update({ results }).eq('id', globalCommentModal.runId)
+            const { data: { session } } = await sb.auth.getSession()
+            await sb.from('execution_history').insert({
+              test_run_id: globalCommentModal.runId,
+              test_case_id: globalCommentModal.caseId,
+              status: globalCommentModal.status,
+              comment: comment.trim(),
+              executed_by: session?.user?.id,
+            })
+            load()
+            setGlobalCommentModal(null)
+          }}
+          onClose={() => setGlobalCommentModal(null)}
+        />
+      )}
+
+      {/* ── Drill-down Detail Panel ── */}
       {navStack.length > 0 && <DrillDown
         stack={navStack}
         cases={cases} sections={sections} sprints={sprints}
@@ -899,7 +932,7 @@ function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResul
 // ─── DrillDown Panel ─────────────────────────────────────────────────────────
 // Renders as a full-height overlay with breadcrumb navigation
 
-function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestones, bugs, myRole, onPush, onPop, onGoTo, onClose, onUpdateRunResult, onViewBug }: {
+function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestones, bugs, myRole, onPush, onPop, onGoTo, onClose, onUpdateRunResult, onViewBug, onShowComment }: {
   stack: Array<{type: string; data: any; extra?: any}>
   cases: any[]; sections: any[]; sprints: any[]; testPlans: any[]; runs: any[]; milestones: any[]; bugs: any[]
   myRole: WorkspaceRole
@@ -909,6 +942,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
   onClose: () => void
   onUpdateRunResult: (runId: string, caseId: string, status: RunStatus) => void
   onViewBug: (b: any) => void
+  onShowComment?: (runId: string, caseId: string, status: RunStatus) => void
 }) {
   const current = stack[stack.length - 1]
 
@@ -1151,7 +1185,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
               <p style={sectionLabel}>Update Status</p>
               <div style={{ display: 'flex', gap: 8 }}>
                 {(['pass','fail','skip'] as const).map(s => (
-                  <button key={s} onClick={() => onUpdateRunResult(runId, data.id, s)}
+                  <button key={s} onClick={() => onShowComment ? onShowComment(runId, data.id, s) : onUpdateRunResult(runId, data.id, s)}
                     style={{ flex: 1, padding: '9px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: stColors[s].bg, color: stColors[s].color }}>
                     {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
                   </button>
@@ -1405,6 +1439,15 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
     setCreating(true)
     let bugId = selectedBugId || undefined
 
+    // Link existing bug — update its test_run_id and test_case_id
+    if (bugAction === 'link' && selectedBugId) {
+      await sb.from('bugs').update({
+        test_run_id: runId,
+        test_case_id: caseId,
+      }).eq('id', selectedBugId)
+      bugId = selectedBugId
+    }
+
     // Create new bug if needed
     if (bugAction === 'create' && newBugTitle.trim()) {
       const { data: { session } } = await sb.auth.getSession()
@@ -1582,4 +1625,4 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
   )
 }
 
-// fix-bug-filter
+// unified-comment-modal
