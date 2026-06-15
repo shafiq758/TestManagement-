@@ -146,6 +146,24 @@ export default function ReportsPage() {
     const { default: autoTable } = await import('jspdf-autotable')
     const doc = new jsPDF()
 
+    // Re-compute filtered data inside handler so it captures current state
+    const pdfActiveSprintIds = new Set(selectedSprintIds)
+    const pdfSprintRuns = selectedSprintIds.length > 0
+      ? data.runs.filter((r: any) => r.sprint_id && pdfActiveSprintIds.has(r.sprint_id))
+      : data.runs
+    const pdfRuns = selectedRunIds.length > 0
+      ? pdfSprintRuns.filter((r: any) => selectedRunIds.includes(r.id))
+      : pdfSprintRuns
+    const pdfBugs = (() => {
+      let bugs = data.bugs
+      if (selectedSprintIds.length > 0) bugs = bugs.filter((b: any) => b.sprint_id && pdfActiveSprintIds.has(b.sprint_id))
+      if (selectedRunIds.length > 0) bugs = bugs.filter((b: any) => b.test_run_id && selectedRunIds.includes(b.test_run_id))
+      return bugs
+    })()
+    const pdfActiveSprints = selectedSprintIds.length > 0
+      ? data.sprints.filter((s: any) => selectedSprintIds.includes(s.id))
+      : data.sprints
+
     doc.setFontSize(18)
     doc.text(`Test Report — ${data.project.name}`, 14, 20)
     doc.setFontSize(11)
@@ -157,13 +175,13 @@ export default function ReportsPage() {
     doc.setTextColor(0)
     doc.text('Overview', 14, 40)
 
-    const pdfRuns = filteredRuns.length
-    const pdfBugs = filteredBugs.length
-    const pdfOpenBugs = filteredBugs.filter((b: any) => b.status === 'open').length
+    const pdfRunCount = pdfRuns.length
+    const pdfBugCount = pdfBugs.length
+    const pdfOpenBugs = pdfBugs.filter((b: any) => b.status === 'open').length
     let pdfPass = 0, pdfFail = 0
-    filteredRuns.forEach((r: any) => { const s = runStats(r); pdfPass += s.pass; pdfFail += s.fail })
+    pdfRuns.forEach((r: any) => { const s = runStats(r); pdfPass += s.pass; pdfFail += s.fail })
     const filterDesc = [
-      selectedSprintIds.length > 0 ? `Sprints: ${activeSprints.map((s: any) => s.name).join(', ')}` : 'All sprints',
+      selectedSprintIds.length > 0 ? `Sprints: ${pdfActiveSprints.map((s: any) => s.name).join(', ')}` : 'All sprints',
       selectedRunIds.length > 0 ? `${selectedRunIds.length} run(s) selected` : 'All runs',
     ].join(' · ')
 
@@ -178,10 +196,10 @@ export default function ReportsPage() {
       startY: 46,
       head: [['Metric', 'Value']],
       body: [
-        ['Test Runs (filtered)', pdfRuns],
+        ['Test Runs (filtered)', pdfRunCount],
         ['Pass', pdfPass],
         ['Fail', pdfFail],
-        ['Bugs', pdfBugs],
+        ['Bugs', pdfBugCount],
         ['Open Bugs', pdfOpenBugs],
       ],
       theme: 'striped',
@@ -195,7 +213,7 @@ export default function ReportsPage() {
     autoTable(doc, {
       startY: runsY + 4,
       head: [['Run Name', 'Sprint', 'Total', 'Pass', 'Fail', 'Skip', 'Untested', 'Pass %']],
-      body: filteredRuns.map((run: any) => {
+      body: pdfRuns.map((run: any) => {
         const s = runStats(run)
         const sprint = data.sprints.find((sp: any) => sp.id === run.sprint_id)
         return [run.name, sprint?.name || '—', s.total, s.pass, s.fail, s.skip, s.untested, `${s.pct}%`]
@@ -204,8 +222,8 @@ export default function ReportsPage() {
     })
 
     // Per-run detailed breakdown
-    if (filteredRuns.length > 0 && filteredRuns.length <= 10) {
-      filteredRuns.forEach((run: any) => {
+    if (pdfRuns.length > 0 && pdfRuns.length <= 10) {
+      pdfRuns.forEach((run: any) => {
         const runCaseIds = run.case_ids || []
         const runResults = run.results || {}
         const failedCases = runCaseIds.filter((id: string) => runResults[id] === 'fail')
@@ -229,14 +247,14 @@ export default function ReportsPage() {
     }
 
     // Bugs table — filtered
-    if (filteredBugs.length > 0) {
+    if (pdfBugs.length > 0) {
       const bugsY = (doc as any).lastAutoTable.finalY + 10
       doc.setFontSize(13)
       doc.text('Bugs', 14, bugsY)
       autoTable(doc, {
         startY: bugsY + 4,
         head: [['Title', 'Severity', 'Status', 'Priority', 'Sprint', 'Run']],
-        body: filteredBugs.map((b: any) => {
+        body: pdfBugs.map((b: any) => {
           const sprint = data.sprints.find((s: any) => s.id === b.sprint_id)
           const run = data.runs.find((r: any) => r.id === b.test_run_id)
           return [b.title, b.severity, b.status.replace('_', ' '), b.priority, sprint?.name || '—', run?.name || '—']
@@ -891,4 +909,4 @@ export default function ReportsPage() {
   )
 }
 
-// fix-pdf-filter
+// fix-pdf-filter-v3
