@@ -288,9 +288,9 @@ export default function ReportsPage() {
   })
 
   // Coverage: cases that have been executed at least once
-  const filteredExecHistory = selectedSprintIds.length > 0
-    ? data.execHistory.filter(h => filteredRuns.some((r: any) => r.id === h.test_run_id))
-    : data.execHistory
+  const filteredExecHistory = data.execHistory.filter((h: any) => 
+    filteredRuns.some((r: any) => r.id === h.test_run_id)
+  )
   const executedCaseIds = new Set(filteredExecHistory.map((h: any) => h.test_case_id))
   const coveredCases = data.cases.filter(c => executedCaseIds.has(c.id)).length
   const coveragePct = totalCases > 0 ? Math.round((coveredCases / totalCases) * 100) : 0
@@ -866,3 +866,5 @@ export default function ReportsPage() {
     </div>
   )
 }
+
+// bug-run-filter
