@@ -308,6 +308,7 @@ export default function ProjectPage() {
         myRole={myRole}
         onPush={pushNav} onPop={popNav} onGoTo={goToIndex} onClose={clearNav}
         onViewBug={(b) => pushNav("bug", b)}
+        onShowComment={(runId, caseId, status) => setGlobalCommentModal({runId, caseId, status})}                        
         onUpdateRunResult={async (runId, caseId, status) => {
           const run = runs.find(r => r.id === runId)
           if (!run) return
