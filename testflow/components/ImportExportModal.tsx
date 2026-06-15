@@ -338,6 +338,3 @@ export default function ImportExportModal({ projectId, sections, cases, onRefres
     </div>
   )
 }
-
-// v3
-// v3

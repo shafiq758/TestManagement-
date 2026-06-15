@@ -128,6 +128,3 @@ export default function AttachmentUploader({
     </div>
   )
 }
-
-// v3
-// v3

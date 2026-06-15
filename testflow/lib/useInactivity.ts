@@ -47,6 +47,3 @@ export function useInactivity(onLogout: () => void) {
 
   return { showWarning, secondsLeft, reset }
 }
-
-// v3
-// v3

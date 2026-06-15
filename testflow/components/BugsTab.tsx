@@ -300,6 +300,3 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
     </div>
   )
 }
-
-// v3
-// v3

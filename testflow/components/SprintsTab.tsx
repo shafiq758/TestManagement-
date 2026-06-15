@@ -395,6 +395,3 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
     </div>
   )
 }
-
-// v3
-// v3
