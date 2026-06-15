@@ -74,28 +74,18 @@ export default function ReportsPage() {
   const projectId = params.projectId as string
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'runs' | 'coverage' | 'bugs' | 'sprints'>('overview')
+  const [activeTab, setActiveTab] = useState< doc.text('Overview', 14, 40) | 'runs' | 'coverage' | 'bugs' | 'sprints'>('overview')
   const [exporting, setExporting] = useState(false)
-  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string>('') // empty = all
-  const [showMilestoneFilter, setShowMilestoneFilter] = useState(false)
-  const [selectedSprintIds, setSelectedSprintIds] = useState<string[]>([])
+  const [selectedSprintIds, setSelectedSprintIds] = useState<string[]>([]) // empty = all sprints
   const [showSprintFilter, setShowSprintFilter] = useState(false)
-  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([])
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]) // empty = all runs
   const [showRunFilter, setShowRunFilter] = useState(false)
 
-  // Milestone selection — radio (single select), clears sprint/run filters
-  const selectMilestone = (id: string) => {
-    setSelectedMilestoneId(p => p === id ? '' : id)
-    setSelectedSprintIds([]) // reset sprints when milestone changes
-    setSelectedRunIds([])    // reset runs
-  }
-  const clearMilestoneFilter = () => { setSelectedMilestoneId(''); setSelectedSprintIds([]); setSelectedRunIds([]) }
+  // Toggle sprint selection
+  const toggleSprint = (id: string) => setSelectedSprintIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const clearSprintFilter = () => setSelectedSprintIds([])
 
-  // Sprint toggle — clears run filter
-  const toggleSprint = (id: string) => { setSelectedSprintIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]); setSelectedRunIds([]) }
-  const clearSprintFilter = () => { setSelectedSprintIds([]); setSelectedRunIds([]) }
-
-  // Run toggle
+  // Toggle run selection
   const toggleRun = (id: string) => setSelectedRunIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
   const clearRunFilter = () => setSelectedRunIds([])
   const sb = createClient()
@@ -157,16 +147,10 @@ export default function ReportsPage() {
     const doc = new jsPDF()
 
     // Re-compute filtered data inside handler so it captures current state
-    const pdfMilestoneSprintIds = selectedMilestoneId
-      ? new Set(data.sprints.filter((s: any) => s.milestone_id === selectedMilestoneId).map((s: any) => s.id))
-      : null
     const pdfActiveSprintIds = new Set(selectedSprintIds)
-    const pdfSprintRuns = (() => {
-      let runs = data.runs
-      if (pdfMilestoneSprintIds) runs = runs.filter((r: any) => r.sprint_id && pdfMilestoneSprintIds.has(r.sprint_id))
-      if (selectedSprintIds.length > 0) runs = runs.filter((r: any) => r.sprint_id && pdfActiveSprintIds.has(r.sprint_id))
-      return runs
-    })()
+    const pdfSprintRuns = selectedSprintIds.length > 0
+      ? data.runs.filter((r: any) => r.sprint_id && pdfActiveSprintIds.has(r.sprint_id))
+      : data.runs
     const pdfRuns = selectedRunIds.length > 0
       ? pdfSprintRuns.filter((r: any) => selectedRunIds.includes(r.id))
       : pdfSprintRuns
@@ -178,7 +162,7 @@ export default function ReportsPage() {
     })()
     const pdfActiveSprints = selectedSprintIds.length > 0
       ? data.sprints.filter((s: any) => selectedSprintIds.includes(s.id))
-      : (selectedMilestoneId ? data.sprints.filter((s: any) => s.milestone_id === selectedMilestoneId) : data.sprints)
+      : data.sprints
 
     doc.setFontSize(18)
     doc.text(`Test Report — ${data.project.name}`, 14, 20)
@@ -192,12 +176,10 @@ export default function ReportsPage() {
     const pdfOpenBugs = pdfBugs.filter((b: any) => b.status === 'open').length
     let pdfPass = 0, pdfFail = 0
     pdfRuns.forEach((r: any) => { const s = runStats(r); pdfPass += s.pass; pdfFail += s.fail })
-    const selectedMilestoneName = selectedMilestoneId ? data.milestones.find((m: any) => m.id === selectedMilestoneId)?.name : ''
     const filterDesc = [
-      selectedMilestoneName ? `Milestone: ${selectedMilestoneName}` : '',
-      selectedSprintIds.length > 0 ? `Sprints: ${pdfActiveSprints.map((s: any) => s.name).join(', ')}` : (selectedMilestoneId ? 'All milestone sprints' : 'All sprints'),
+      selectedSprintIds.length > 0 ? `Sprints: ${pdfActiveSprints.map((s: any) => s.name).join(', ')}` : 'All sprints',
       selectedRunIds.length > 0 ? `${selectedRunIds.length} run(s) selected` : 'All runs',
-    ].filter(Boolean).join(' · ')
+    ].join(' · ')
 
     doc.setFontSize(10)
     doc.setTextColor(100)
@@ -289,16 +271,11 @@ export default function ReportsPage() {
   if (!data) return null
 
   // ── Filtered data based on selected sprints ─────────────────────────────────
-  // Cascade: milestone → sprints → runs
-  const milestoneFilteredSprints = selectedMilestoneId
-    ? data.sprints.filter((s: any) => s.milestone_id === selectedMilestoneId)
+  const activeSprints = selectedSprintIds.length > 0
+    ? data.sprints.filter(s => selectedSprintIds.includes(s.id))
     : data.sprints
 
-  const activeSprints = selectedSprintIds.length > 0
-    ? milestoneFilteredSprints.filter((s: any) => selectedSprintIds.includes(s.id))
-    : milestoneFilteredSprints
-
-  const activeSprintIds = new Set(activeSprints.map((s: any) => s.id))
+  const activeSprintIds = new Set(activeSprints.map(s => s.id))
 
   // Filter runs, bugs, plans by selected sprints
   const sprintFilteredRuns = selectedSprintIds.length > 0
@@ -416,46 +393,6 @@ export default function ReportsPage() {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Reports — {data.project.name}</h1>
           </div>
           <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
-            {/* Milestone filter — radio single select */}
-            <div style={{ position: 'relative' }}>
-              <button onClick={() => setShowMilestoneFilter(p => !p)}
-                style={{ border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', background: selectedMilestoneId ? '#f5f3ff' : '#fff', color: selectedMilestoneId ? '#7c3aed' : '#374151', fontWeight: selectedMilestoneId ? 600 : 400 }}>
-                🎯 {selectedMilestoneId ? data.milestones.find((m: any) => m.id === selectedMilestoneId)?.name || 'Milestone' : 'All milestones'} ▾
-              </button>
-              {showMilestoneFilter && (
-                <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 100, minWidth: 220, padding: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px 8px', borderBottom: '1px solid #f3f4f6', marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>Filter by milestone</span>
-                    {selectedMilestoneId && <button onClick={clearMilestoneFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#7c3aed', fontFamily: 'inherit' }}>Clear</button>}
-                  </div>
-                  {/* All option */}
-                  <div onClick={() => { setSelectedMilestoneId(''); setSelectedSprintIds([]); setSelectedRunIds([]) }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', borderRadius: 6, background: !selectedMilestoneId ? '#f5f3ff' : 'transparent' }}>
-                    <div style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${!selectedMilestoneId ? '#7c3aed' : '#d1d5db'}`, background: !selectedMilestoneId ? '#7c3aed' : '#fff', flexShrink: 0 }} />
-                    <span style={{ fontSize: 13 }}>All milestones</span>
-                  </div>
-                  {data.milestones.map((m: any) => {
-                    const isSelected = selectedMilestoneId === m.id
-                    const linkedSprints = data.sprints.filter((s: any) => s.milestone_id === m.id)
-                    return (
-                      <div key={m.id} onClick={() => selectMilestone(m.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', borderRadius: 6, background: isSelected ? '#f5f3ff' : 'transparent' }}>
-                        <div style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${isSelected ? '#7c3aed' : '#d1d5db'}`, background: isSelected ? '#7c3aed' : '#fff', flexShrink: 0 }} />
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: '0 0 1px', fontSize: 13 }}>{m.name}</p>
-                          <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{linkedSprints.length} sprint{linkedSprints.length !== 1 ? 's' : ''}</p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                  {data.milestones.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', padding: '8px 10px', margin: 0 }}>No milestones yet.</p>}
-                  <div style={{ borderTop: '1px solid #f3f4f6', marginTop: 6, paddingTop: 8 }}>
-                    <button onClick={() => setShowMilestoneFilter(false)} style={{ width: '100%', background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '7px 0', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>Apply</button>
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* Run filter */}
             <div style={{ position: 'relative' }}>
               <button onClick={() => setShowRunFilter(p => !p)}
@@ -515,7 +452,7 @@ export default function ReportsPage() {
                       <button onClick={clearSprintFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#2563eb', fontFamily: 'inherit' }}>Clear all</button>
                     )}
                   </div>
-                  {milestoneFilteredSprints.map((sprint: any) => {
+                  {data.sprints.map(sprint => {
                     const sc: Record<string,{bg:string;color:string}> = {
                       planned:{bg:'#f3f4f6',color:'#374151'},
                       active:{bg:'#dcfce7',color:'#15803d'},
@@ -553,14 +490,8 @@ export default function ReportsPage() {
           </div>
         </div>
         {/* Sprint filter active banner */}
-        {(selectedMilestoneId || selectedSprintIds.length > 0 || selectedRunIds.length > 0) && (
+        {(selectedSprintIds.length > 0 || selectedRunIds.length > 0) && (
           <div style={{ padding: '6px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {selectedMilestoneId && (
-              <span style={{ fontSize: 12, background: '#f5f3ff', color: '#7c3aed', padding: '2px 10px', borderRadius: 5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                🎯 {data.milestones.find((m: any) => m.id === selectedMilestoneId)?.name}
-                <button onClick={clearMilestoneFilter} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#a78bfa', fontFamily: 'inherit', padding: 0 }}>✕</button>
-              </span>
-            )}
             {selectedSprintIds.length > 0 && (
               <span style={{ fontSize: 12, background: '#eff6ff', color: '#2563eb', padding: '2px 10px', borderRadius: 5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
                 🏃 {activeSprints.map((s: any) => s.name).join(', ')}
@@ -974,4 +905,4 @@ export default function ReportsPage() {
   )
 }
 
-// milestone-filter
+// fix-overview-duplicate
