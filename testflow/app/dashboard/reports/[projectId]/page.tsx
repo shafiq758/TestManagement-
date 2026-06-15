@@ -74,7 +74,7 @@ export default function ReportsPage() {
   const projectId = params.projectId as string
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'runs' | 'coverage' | 'bugs' | 'sprints'>('overview')
+  const [activeTab, setActiveTab] = useState< doc.text('Overview', 14, 40) | 'runs' | 'coverage' | 'bugs' | 'sprints'>('overview')
   const [exporting, setExporting] = useState(false)
   const [selectedSprintIds, setSelectedSprintIds] = useState<string[]>([]) // empty = all sprints
   const [showSprintFilter, setShowSprintFilter] = useState(false)
