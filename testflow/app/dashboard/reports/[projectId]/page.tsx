@@ -168,13 +168,9 @@ export default function ReportsPage() {
     doc.text(`Test Report — ${data.project.name}`, 14, 20)
     doc.setFontSize(11)
     doc.setTextColor(100)
-    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 28)
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 30)
 
     // Overview stats
-    doc.setFontSize(13)
-    doc.setTextColor(0)
-    doc.text('Overview', 14, 40)
-
     const pdfRunCount = pdfRuns.length
     const pdfBugCount = pdfBugs.length
     const pdfOpenBugs = pdfBugs.filter((b: any) => b.status === 'open').length
@@ -187,13 +183,13 @@ export default function ReportsPage() {
 
     doc.setFontSize(10)
     doc.setTextColor(100)
-    doc.text(`Filter: ${filterDesc}`, 14, 34)
+    doc.text(`Filter: ${filterDesc}`, 14, 38)
     doc.setFontSize(13)
     doc.setTextColor(0)
-    doc.text('Overview', 14, 42)
+    doc.text('Overview', 14, 50)
 
     autoTable(doc, {
-      startY: 46,
+      startY: 55,
       head: [['Metric', 'Value']],
       body: [
         ['Test Runs (filtered)', pdfRunCount],
@@ -909,4 +905,4 @@ export default function ReportsPage() {
   )
 }
 
-// fix-pdf-filter-v3
+// fix-overview-duplicate
