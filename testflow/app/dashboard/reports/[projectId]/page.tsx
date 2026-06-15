@@ -255,9 +255,16 @@ export default function ReportsPage() {
     ? sprintFilteredRuns.filter((r: any) => selectedRunIds.includes(r.id))
     : sprintFilteredRuns
 
-  const filteredBugs = selectedSprintIds.length > 0
-    ? data.bugs.filter(b => b.sprint_id && activeSprintIds.has(b.sprint_id))
-    : data.bugs
+  const filteredBugs = (() => {
+    let bugs = data.bugs
+    if (selectedSprintIds.length > 0) {
+      bugs = bugs.filter((b: any) => b.sprint_id && activeSprintIds.has(b.sprint_id))
+    }
+    if (selectedRunIds.length > 0) {
+      bugs = bugs.filter((b: any) => b.test_run_id && selectedRunIds.includes(b.test_run_id))
+    }
+    return bugs
+  })()
 
   const filteredPlans = selectedSprintIds.length > 0
     ? data.plans.filter(p => p.sprint_id && activeSprintIds.has(p.sprint_id))
@@ -867,4 +874,4 @@ export default function ReportsPage() {
   )
 }
 
-// bug-run-filter
+// fix-bug-filter-v2
