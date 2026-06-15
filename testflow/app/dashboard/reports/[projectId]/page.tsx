@@ -157,19 +157,32 @@ export default function ReportsPage() {
     doc.setTextColor(0)
     doc.text('Overview', 14, 40)
 
-    const totalRuns = data.runs.length
-    const totalCases = data.cases.length
-    const totalBugs = data.bugs.length
-    const openBugs = data.bugs.filter(b => b.status === 'open').length
+    const pdfRuns = filteredRuns.length
+    const pdfBugs = filteredBugs.length
+    const pdfOpenBugs = filteredBugs.filter((b: any) => b.status === 'open').length
+    let pdfPass = 0, pdfFail = 0
+    filteredRuns.forEach((r: any) => { const s = runStats(r); pdfPass += s.pass; pdfFail += s.fail })
+    const filterDesc = [
+      selectedSprintIds.length > 0 ? `Sprints: ${activeSprints.map((s: any) => s.name).join(', ')}` : 'All sprints',
+      selectedRunIds.length > 0 ? `${selectedRunIds.length} run(s) selected` : 'All runs',
+    ].join(' · ')
+
+    doc.setFontSize(10)
+    doc.setTextColor(100)
+    doc.text(`Filter: ${filterDesc}`, 14, 34)
+    doc.setFontSize(13)
+    doc.setTextColor(0)
+    doc.text('Overview', 14, 42)
 
     autoTable(doc, {
-      startY: 44,
+      startY: 46,
       head: [['Metric', 'Value']],
       body: [
-        ['Total Test Cases', totalCases],
-        ['Total Test Runs', totalRuns],
-        ['Total Bugs', totalBugs],
-        ['Open Bugs', openBugs],
+        ['Test Runs (filtered)', pdfRuns],
+        ['Pass', pdfPass],
+        ['Fail', pdfFail],
+        ['Bugs', pdfBugs],
+        ['Open Bugs', pdfOpenBugs],
       ],
       theme: 'striped',
     })
@@ -215,15 +228,19 @@ export default function ReportsPage() {
       })
     }
 
-    // Bugs table
-    if (data.bugs.length > 0) {
+    // Bugs table — filtered
+    if (filteredBugs.length > 0) {
       const bugsY = (doc as any).lastAutoTable.finalY + 10
       doc.setFontSize(13)
       doc.text('Bugs', 14, bugsY)
       autoTable(doc, {
         startY: bugsY + 4,
-        head: [['Title', 'Severity', 'Status', 'Priority']],
-        body: data.bugs.map(b => [b.title, b.severity, b.status.replace('_', ' '), b.priority]),
+        head: [['Title', 'Severity', 'Status', 'Priority', 'Sprint', 'Run']],
+        body: filteredBugs.map((b: any) => {
+          const sprint = data.sprints.find((s: any) => s.id === b.sprint_id)
+          const run = data.runs.find((r: any) => r.id === b.test_run_id)
+          return [b.title, b.severity, b.status.replace('_', ' '), b.priority, sprint?.name || '—', run?.name || '—']
+        }),
         theme: 'striped',
       })
     }
@@ -874,4 +891,4 @@ export default function ReportsPage() {
   )
 }
 
-// fix-bug-filter-v2
+// fix-pdf-filter
