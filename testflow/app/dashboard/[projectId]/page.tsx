@@ -226,6 +226,7 @@ export default function ProjectPage() {
         <h1 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 600 }}>{project.name}</h1>
         <div style={{ display: 'flex', gap: 0 }}>
           <a href={`/dashboard/reports/${projectId}`} style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none', padding: '10px 14px', borderBottom: '2px solid transparent', display: 'inline-block' }}>📊 Reports</a>
+          {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones'], ['bugs', 'Bugs']] as const).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t as any)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
               fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 600 : 400,
@@ -234,7 +235,7 @@ export default function ProjectPage() {
               marginBottom: -1,
             }}>{label}</button>
           ))}
-        </div>
+            </div>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
