@@ -251,7 +251,7 @@ export default function DocEditorPage() {
           )}
 
           {/* Metadata row */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 12, color: '#9ca3af' }}>🏃 Sprint</span>
               {canEdit ? (
@@ -272,6 +272,18 @@ export default function DocEditorPage() {
                 </select>
               ) : (
                 <span style={{ fontSize: 12, color: '#374151' }}>{milestones.find(m => m.id === selectedMilestoneId)?.name || '—'}</span>
+              )}
+            </div>
+            {/* Comment access indicator */}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {canComment ? (
+                <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>
+                  💬 Comments enabled
+                </span>
+              ) : (
+                <span style={{ fontSize: 11, background: '#f3f4f6', color: '#9ca3af', padding: '2px 8px', borderRadius: 4 }}>
+                  {!published && !isAuthor ? '🔒 Not published' : commentAccess === 'none' ? '💬 Comments off' : '👁 View only'}
+                </span>
               )}
             </div>
           </div>
@@ -513,4 +525,4 @@ function VersionPreview({ content }: { content: any }) {
   )
 }
 
-// fix-comment-access
+// comment-debug
