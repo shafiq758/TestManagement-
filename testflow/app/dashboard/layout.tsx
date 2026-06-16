@@ -187,6 +187,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   </svg>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
                 </Link>
+                {activeId === p.id && (
+                  <Link href={`/dashboard/docs/${p.id}`}
+                    style={{ display: 'block', fontSize: 11, color: '#6b7280', textDecoration: 'none', padding: '3px 10px 3px 32px', borderRadius: 6 }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#111'}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#6b7280'}>
+                    📄 Docs
+                  </Link>
+                )}
                 {canCreateProjects(myRole) && (
                   <button className="del-btn" onClick={(e) => deleteProject(p.id, p.name, e)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px', opacity: 0, transition: 'opacity 0.15s', flexShrink: 0 }}
