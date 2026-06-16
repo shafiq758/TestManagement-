@@ -29,6 +29,13 @@ export default function DocEditorPage() {
   const [saved, setSaved] = useState(true)
   const [showVersions, setShowVersions] = useState(false)
   const [versions, setVersions] = useState<any[]>([])
+  const [previewVersion, setPreviewVersion] = useState<any | null>(null)
+  const [showPublishModal, setShowPublishModal] = useState(false)
+  const [visibility, setVisibility] = useState<'private' | 'team'>('private')
+  const [commentAccess, setCommentAccess] = useState<'all' | 'editors' | 'none'>('all')
+  const [published, setPublished] = useState(false)
+  const [isAuthor, setIsAuthor] = useState(false)
+  const [userId, setUserId] = useState('')
   const [showCommentModal, setShowCommentModal] = useState(false)
   const [pendingComment, setPendingComment] = useState<{text: string; from: number; to: number} | null>(null)
   const [commentText, setCommentText] = useState('')
@@ -53,11 +60,17 @@ export default function DocEditorPage() {
 
     if (!docData) { router.push(`/dashboard/docs/${projectId}`); return }
 
+    const uid = session.user.id
+    setUserId(uid)
     setDoc(docData)
     setTitle(docData.title)
     setContent(docData.content || {})
     setSelectedSprintId(docData.sprint_id || '')
     setSelectedMilestoneId(docData.milestone_id || '')
+    setVisibility(docData.visibility || 'private')
+    setCommentAccess(docData.comment_access || 'all')
+    setPublished(docData.published || false)
+    setIsAuthor(docData.created_by === uid)
     setSprints(sprs || [])
     setMilestones(mils || [])
     setMyRole((member?.role || 'viewer') as WorkspaceRole)
@@ -65,7 +78,14 @@ export default function DocEditorPage() {
     setLoading(false)
   }
 
-  const canEdit = canEditCases(myRole)
+  const canEdit = isAuthor // only author can edit content
+  const canDelete = isAuthor || myRole === 'admin' // author or admin can delete
+  const canComment = (() => {
+    if (!published && !isAuthor) return false
+    if (commentAccess === 'none') return false
+    if (commentAccess === 'editors') return myRole === 'admin' || myRole === 'editor' || isAuthor
+    return myRole !== 'viewer' // 'all' — any non-viewer
+  })()
 
   // Auto-save with debounce
   const autoSave = useCallback(async (newTitle: string, newContent: any, sprintId: string, milestoneId: string) => {
@@ -109,6 +129,19 @@ export default function DocEditorPage() {
   }
 
   // Save version manually
+  const publishDoc = async (vis: string, ca: string, pub: boolean) => {
+    await sb.from('documents').update({
+      visibility: vis,
+      comment_access: ca,
+      published: pub,
+      updated_at: new Date().toISOString(),
+    }).eq('id', docId)
+    setVisibility(vis as any)
+    setCommentAccess(ca as any)
+    setPublished(pub)
+    setShowPublishModal(false)
+  }
+
   const saveVersion = async () => {
     const { data: { session } } = await sb.auth.getSession()
     await sb.from('document_versions').insert({
@@ -186,10 +219,16 @@ export default function DocEditorPage() {
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          {canEdit && (
-            <button onClick={saveVersion} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
-              📌 Save version
-            </button>
+            {isAuthor && (
+            <>
+              <button onClick={saveVersion} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
+                📌 Save version
+              </button>
+              <button onClick={() => setShowPublishModal(true)}
+                style={{ border: `1px solid ${published ? '#16a34a' : '#d1d5db'}`, borderRadius: 7, padding: '6px 12px', fontSize: 12, background: published ? '#f0fdf4' : '#fff', color: published ? '#16a34a' : '#374151', cursor: 'pointer', fontWeight: published ? 600 : 400 }}>
+                {published ? '✓ Published' : '🌐 Publish'}
+              </button>
+            </>
           )}
           <button onClick={() => { setShowVersions(true); loadVersions() }}
             style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
@@ -240,7 +279,7 @@ export default function DocEditorPage() {
           <RichEditor
             content={content}
             onChange={handleContentChange}
-            onHighlightComment={canEdit ? handleHighlightComment : undefined}
+            onHighlightComment={canComment ? handleHighlightComment : undefined}
             editable={canEdit}
             placeholder="Start writing your document… Select text to highlight and add a comment."
           />
@@ -258,7 +297,7 @@ export default function DocEditorPage() {
                 <p style={{ margin: '0 0 8px', fontSize: 13, color: '#374151' }}>{comment.comment_text}</p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(comment.created_at).toLocaleDateString()}</span>
-                  {canEdit && (
+                  {isAuthor && (
                     <button onClick={() => resolveComment(comment.id)}
                       style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer', color: '#6b7280' }}>
                       ✓ Resolve
@@ -294,6 +333,98 @@ export default function DocEditorPage() {
         </div>
       )}
 
+      {/* Publish modal */}
+      {showPublishModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 420, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600 }}>🌐 Publish document</h3>
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: '#374151' }}>Who can see this document?</p>
+              {[
+                { value: 'private', label: 'Private', desc: 'Only you can see it', icon: '🔒' },
+                { value: 'team', label: 'Team', desc: 'All workspace members can view', icon: '👥' },
+              ].map(opt => (
+                <div key={opt.value} onClick={() => setVisibility(opt.value as any)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, border: `1px solid ${visibility === opt.value ? '#2563eb' : '#e5e7eb'}`, background: visibility === opt.value ? '#eff6ff' : '#fff', cursor: 'pointer', marginBottom: 8 }}>
+                  <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${visibility === opt.value ? '#2563eb' : '#d1d5db'}`, background: visibility === opt.value ? '#2563eb' : '#fff', flexShrink: 0 }} />
+                  <div>
+                    <p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: 500 }}>{opt.icon} {opt.label}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{opt.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: '#374151' }}>Who can comment?</p>
+              {[
+                { value: 'all', label: 'All members', desc: 'Anyone with access can comment' },
+                { value: 'editors', label: 'Editors only', desc: 'Only admins and editors' },
+                { value: 'none', label: 'No comments', desc: 'Disable comments on this doc' },
+              ].map(opt => (
+                <div key={opt.value} onClick={() => setCommentAccess(opt.value as any)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderRadius: 8, border: `1px solid ${commentAccess === opt.value ? '#2563eb' : '#e5e7eb'}`, background: commentAccess === opt.value ? '#eff6ff' : '#fff', cursor: 'pointer', marginBottom: 6 }}>
+                  <div style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${commentAccess === opt.value ? '#2563eb' : '#d1d5db'}`, background: commentAccess === opt.value ? '#2563eb' : '#fff', flexShrink: 0 }} />
+                  <div>
+                    <p style={{ margin: '0 0 1px', fontSize: 13, fontWeight: 500 }}>{opt.label}</p>
+                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{opt.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowPublishModal(false)} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => publishDoc(visibility, commentAccess, true)}
+                style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                ✓ Publish
+              </button>
+              {published && (
+                <button onClick={() => publishDoc('private', commentAccess, false)}
+                  style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                  Unpublish
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Version preview modal */}
+      {previewVersion && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: 24 }}>
+          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 720, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e5e7eb' }}>
+              <div>
+                <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 600 }}>{previewVersion.title}</p>
+                <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>Saved {new Date(previewVersion.created_at).toLocaleString()}</p>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {isAuthor && (
+                  <button onClick={() => { restoreVersion(previewVersion); setPreviewVersion(null) }}
+                    style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
+                    Restore this version
+                  </button>
+                )}
+                <button onClick={() => setPreviewVersion(null)} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Close</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+              <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 20 }}>{previewVersion.title}</h1>
+              {/* Render content as read-only */}
+              {previewVersion.content && Object.keys(previewVersion.content).length > 0 ? (
+                <div style={{ fontSize: 14, lineHeight: 1.7, color: '#374151' }}>
+                  <p style={{ color: '#9ca3af', fontStyle: 'italic' }}>Content preview — rich text rendering available in full editor</p>
+                  <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13 }}>
+                    {JSON.stringify(previewVersion.content, null, 2).slice(0, 500)}…
+                  </pre>
+                </div>
+              ) : (
+                <p style={{ color: '#9ca3af' }}>Empty document</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Version history panel */}
       {showVersions && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
@@ -314,12 +445,18 @@ export default function DocEditorPage() {
                     <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500 }}>{v.title}</p>
                     <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{new Date(v.created_at).toLocaleString()}</p>
                   </div>
-                  {canEdit && (
-                    <button onClick={() => restoreVersion(v)}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setPreviewVersion(v)}
                       style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
-                      Restore
+                      Preview
                     </button>
-                  )}
+                    {isAuthor && (
+                      <button onClick={() => restoreVersion(v)}
+                        style={{ border: '1px solid #111', borderRadius: 6, padding: '5px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
+                        Restore
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
