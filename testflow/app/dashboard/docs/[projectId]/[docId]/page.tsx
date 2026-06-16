@@ -81,10 +81,11 @@ export default function DocEditorPage() {
   const canEdit = isAuthor // only author can edit content
   const canDelete = isAuthor || myRole === 'admin' // author or admin can delete
   const canComment = (() => {
-    if (!published && !isAuthor) return false
+    if (isAuthor) return true // author always can comment
+    if (!published) return false // non-authors can't comment on unpublished docs
     if (commentAccess === 'none') return false
-    if (commentAccess === 'editors') return myRole === 'admin' || myRole === 'editor' || isAuthor
-    return myRole !== 'viewer' // 'all' — any non-viewer
+    if (commentAccess === 'editors') return myRole === 'admin' || myRole === 'editor'
+    return myRole !== 'viewer' // 'all' — editors and testers can comment, viewers cannot
   })()
 
   // Auto-save with debounce
@@ -512,4 +513,4 @@ function VersionPreview({ content }: { content: any }) {
   )
 }
 
-// version-preview
+// fix-comment-access

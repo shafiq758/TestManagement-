@@ -16,10 +16,11 @@ interface RichEditorProps {
   onChange: (content: any) => void
   onHighlightComment?: (text: string, from: number, to: number) => void
   editable?: boolean
+  canComment?: boolean
   placeholder?: string
 }
 
-export default function RichEditor({ content, onChange, onHighlightComment, editable = true, placeholder = 'Start writing your document…' }: RichEditorProps) {
+export default function RichEditor({ content, onChange, onHighlightComment, editable = true, canComment = false, placeholder = 'Start writing your document…' }: RichEditorProps) {
   const [uploading, setUploading] = useState(false)
   const [selectionPopup, setSelectionPopup] = useState<{x: number; y: number; text: string; from: number; to: number} | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -79,12 +80,13 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
   useEffect(() => {
     if (!editor) return
     const handleMouseUp = () => {
+      if (!onHighlightComment) return // only track selection if comment is possible
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) { setSelectionPopup(null); return }
+      const text = selection.toString().trim()
+      if (!text) { setSelectionPopup(null); return }
       const { from, to } = editor.state.selection
       if (from === to) { setSelectionPopup(null); return }
-      const text = editor.state.doc.textBetween(from, to)
-      if (!text.trim()) { setSelectionPopup(null); return }
-      const selection = window.getSelection()
-      if (!selection || selection.rangeCount === 0) return
       const range = selection.getRangeAt(0)
       const rect = range.getBoundingClientRect()
       setSelectionPopup({
@@ -180,7 +182,7 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         <EditorContent editor={editor} />
       </div>
 
-      {selectionPopup && editable && typeof window !== 'undefined' && createPortal(
+      {selectionPopup && (editable || canComment) && typeof window !== 'undefined' && createPortal(
         <div style={{
           position: 'fixed',
           left: selectionPopup.x,
@@ -234,4 +236,5 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     </div>
   )
 }
-// comment-portal
+
+// fix-comment-v2
