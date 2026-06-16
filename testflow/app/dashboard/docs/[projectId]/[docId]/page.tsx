@@ -40,6 +40,9 @@ export default function DocEditorPage() {
   const [pendingComment, setPendingComment] = useState<{text: string; from: number; to: number} | null>(null)
   const [commentText, setCommentText] = useState('')
   const [comments, setComments] = useState<any[]>([])
+  const [replies, setReplies] = useState<Record<string, any[]>>({})
+  const [replyText, setReplyText] = useState<Record<string, string>>({})
+  const [showReplyInput, setShowReplyInput] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const sb = createClient()
@@ -82,7 +85,19 @@ export default function DocEditorPage() {
       memberRole = (memberData?.role || 'viewer') as WorkspaceRole
     }
     setMyRole(memberRole)
-    setComments(comms || [])
+    const commsData = comms || []
+    setComments(commsData)
+    // Load replies for all comments
+    if (commsData.length > 0) {
+      const { data: repliesData } = await sb.from('document_comment_replies')
+        .select('*').in('comment_id', commsData.map((c: any) => c.id)).order('created_at')
+      const repliesMap: Record<string, any[]> = {}
+      ;(repliesData || []).forEach((r: any) => {
+        if (!repliesMap[r.comment_id]) repliesMap[r.comment_id] = []
+        repliesMap[r.comment_id].push(r)
+      })
+      setReplies(repliesMap)
+    }
     setLoading(false)
     // Debug — remove after fixing
     console.log('DOC DEBUG:', {
@@ -208,6 +223,22 @@ export default function DocEditorPage() {
     if (newComment) setComments(p => [...p, newComment])
     setShowCommentModal(false)
     setPendingComment(null)
+  }
+
+  const submitReply = async (commentId: string) => {
+    const text = replyText[commentId]?.trim()
+    if (!text) return
+    const { data: { session } } = await sb.auth.getSession()
+    const { data: newReply } = await sb.from('document_comment_replies').insert({
+      comment_id: commentId,
+      reply_text: text,
+      created_by: session?.user.id,
+    }).select().single()
+    if (newReply) {
+      setReplies(p => ({ ...p, [commentId]: [...(p[commentId] || []), newReply] }))
+      setReplyText(p => ({ ...p, [commentId]: '' }))
+      setShowReplyInput(p => ({ ...p, [commentId]: false }))
+    }
   }
 
   const resolveComment = async (commentId: string) => {
@@ -339,19 +370,48 @@ export default function DocEditorPage() {
             <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600 }}>💬 Comments ({comments.filter(c => !c.resolved).length})</p>
             {comments.filter(c => !c.resolved).map(comment => (
               <div key={comment.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginBottom: 10 }}>
-                <div style={{ background: '#fef9c3', borderRadius: 4, padding: '3px 8px', fontSize: 12, color: '#92400e', marginBottom: 8, fontStyle: 'italic' }}>
-                  "{comment.highlighted_text}"
-                </div>
+                {comment.highlighted_text && comment.highlighted_text !== '(General comment)' && (
+                  <div style={{ background: '#fef9c3', borderRadius: 4, padding: '3px 8px', fontSize: 12, color: '#92400e', marginBottom: 8, fontStyle: 'italic' }}>
+                    "{comment.highlighted_text}"
+                  </div>
+                )}
                 <p style={{ margin: '0 0 8px', fontSize: 13, color: '#374151' }}>{comment.comment_text}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(comment.created_at).toLocaleDateString()}</span>
-                  {isAuthor && (
-                    <button onClick={() => resolveComment(comment.id)}
-                      style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer', color: '#6b7280' }}>
-                      ✓ Resolve
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {canComment && (
+                      <button onClick={() => setShowReplyInput(p => ({ ...p, [comment.id]: !p[comment.id] }))}
+                        style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer', color: '#6b7280' }}>
+                        ↩ Reply
+                      </button>
+                    )}
+                    {isAuthor && (
+                      <button onClick={() => resolveComment(comment.id)}
+                        style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer', color: '#6b7280' }}>
+                        ✓ Resolve
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {/* Replies */}
+                {(replies[comment.id] || []).map((reply: any) => (
+                  <div key={reply.id} style={{ marginLeft: 12, paddingLeft: 10, borderLeft: '2px solid #e5e7eb', marginBottom: 6 }}>
+                    <p style={{ margin: '0 0 2px', fontSize: 12, color: '#374151' }}>{reply.reply_text}</p>
+                    <span style={{ fontSize: 10, color: '#9ca3af' }}>{new Date(reply.created_at).toLocaleDateString()}</span>
+                  </div>
+                ))}
+                {/* Reply input */}
+                {showReplyInput[comment.id] && (
+                  <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                    <input value={replyText[comment.id] || ''} onChange={e => setReplyText(p => ({ ...p, [comment.id]: e.target.value }))}
+                      placeholder="Write a reply…" onKeyDown={e => e.key === 'Enter' && submitReply(comment.id)}
+                      style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 8px', fontSize: 12, outline: 'none' }} />
+                    <button onClick={() => submitReply(comment.id)}
+                      style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
+                      Send
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
