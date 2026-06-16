@@ -7,7 +7,7 @@ import Underline from '@tiptap/extension-underline'
 import Link from '@tiptap/extension-link'
 import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { uploadFile } from '@/lib/uploadFile'
 
 interface RichEditorProps {
@@ -20,6 +20,7 @@ interface RichEditorProps {
 
 export default function RichEditor({ content, onChange, onHighlightComment, editable = true, placeholder = 'Start writing your document…' }: RichEditorProps) {
   const [uploading, setUploading] = useState(false)
+  const [selectionPopup, setSelectionPopup] = useState<{x: number; y: number; text: string; from: number; to: number} | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const editor = useEditor({
@@ -72,6 +73,33 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
       if (file) await addImage(file)
     }
   }, [addImage])
+
+  // Show popup on text selection
+  useEffect(() => {
+    if (!editor) return
+    const handleMouseUp = () => {
+      const { from, to } = editor.state.selection
+      if (from === to) { setSelectionPopup(null); return }
+      const text = editor.state.doc.textBetween(from, to)
+      if (!text.trim()) { setSelectionPopup(null); return }
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0) return
+      const range = selection.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+      setSelectionPopup({
+        x: rect.left + rect.width / 2,
+        y: rect.top - 8,
+        text, from, to
+      })
+    }
+    const handleMouseDown = () => setSelectionPopup(null)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => {
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.removeEventListener('mousedown', handleMouseDown)
+    }
+  }, [editor])
 
   if (!editor) return null
 
@@ -151,6 +179,41 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         <EditorContent editor={editor} />
       </div>
 
+      {/* Selection popup */}
+      {selectionPopup && editable && (
+        <div style={{
+          position: 'fixed',
+          left: selectionPopup.x,
+          top: selectionPopup.y,
+          transform: 'translateX(-50%) translateY(-100%)',
+          background: '#111',
+          borderRadius: 8,
+          padding: '4px 6px',
+          display: 'flex',
+          gap: 4,
+          zIndex: 1000,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          pointerEvents: 'auto',
+        }}>
+          <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleBold().run() }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: editor.isActive('bold') ? '#facc15' : '#fff', fontSize: 13, fontWeight: 700, padding: '2px 8px', borderRadius: 4 }}>B</button>
+          <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleItalic().run() }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: editor.isActive('italic') ? '#facc15' : '#fff', fontSize: 13, padding: '2px 8px', borderRadius: 4, fontStyle: 'italic' }}>I</button>
+          <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleHighlight().run() }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: editor.isActive('highlight') ? '#facc15' : '#fff', fontSize: 13, padding: '2px 8px', borderRadius: 4 }}>🖊</button>
+          {onHighlightComment && (
+            <button onMouseDown={e => {
+              e.preventDefault()
+              const { text, from, to } = selectionPopup
+              setSelectionPopup(null)
+              onHighlightComment(text, from, to)
+            }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: 12, padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap', borderLeft: '1px solid #374151' }}>
+              💬 Comment
+            </button>
+          )}
+        </div>
+      )}
+
       <style>{`
         .ProseMirror { outline: none; font-size: 14px; line-height: 1.7; color: #111; }
         .ProseMirror h1 { font-size: 24px; font-weight: 700; margin: 20px 0 8px; }
@@ -171,3 +234,4 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     </div>
   )
 }
+// selection-popup
