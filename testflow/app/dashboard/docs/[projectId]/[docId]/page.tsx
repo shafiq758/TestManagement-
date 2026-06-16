@@ -50,11 +50,11 @@ export default function DocEditorPage() {
     const { data: { session } } = await sb.auth.getSession()
     if (!session) { router.replace('/auth'); return }
 
-    const [{ data: docData }, { data: sprs }, { data: mils }, { data: member }, { data: comms }] = await Promise.all([
+    const [{ data: docData }, { data: sprs }, { data: mils }, { data: projData }, { data: comms }] = await Promise.all([
       sb.from('documents').select('*').eq('id', docId).single(),
       sb.from('sprints').select('*').eq('project_id', projectId),
       sb.from('milestones').select('*').eq('project_id', projectId),
-      sb.from('workspace_members').select('role').eq('user_id', session.user.id).single(),
+      sb.from('projects').select('workspace_id').eq('id', projectId).single(),
       sb.from('document_comments').select('*').eq('document_id', docId).order('created_at'),
     ])
 
@@ -73,7 +73,15 @@ export default function DocEditorPage() {
     setIsAuthor(docData.created_by === uid)
     setSprints(sprs || [])
     setMilestones(mils || [])
-    setMyRole((member?.role || 'viewer') as WorkspaceRole)
+    // Get correct role for this workspace
+    const workspaceId = projData?.workspace_id
+    let memberRole: WorkspaceRole = 'viewer'
+    if (workspaceId) {
+      const { data: memberData } = await sb.from('workspace_members')
+        .select('role').eq('user_id', session.user.id).eq('workspace_id', workspaceId).single()
+      memberRole = (memberData?.role || 'viewer') as WorkspaceRole
+    }
+    setMyRole(memberRole)
     setComments(comms || [])
     setLoading(false)
   }
@@ -525,4 +533,4 @@ function VersionPreview({ content }: { content: any }) {
   )
 }
 
-// comment-outside-editor
+// fix-role-query
