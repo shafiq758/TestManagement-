@@ -76,32 +76,20 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     }
   }, [addImage])
 
-  // Show popup on text selection
-  useEffect(() => {
-    if (!editor) return
-    const handleMouseUp = () => {
-      if (!onHighlightComment) return // only track selection if comment is possible
+  // Handle text selection for comment popup — called directly on mouseup
+  const handleSelectionMouseUp = useCallback(() => {
+    if (!onHighlightComment || !editor) return
+    setTimeout(() => {
       const selection = window.getSelection()
-      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) { setSelectionPopup(null); return }
+      if (!selection || selection.isCollapsed) { setSelectionPopup(null); return }
       const text = selection.toString().trim()
       if (!text) { setSelectionPopup(null); return }
       const { from, to } = editor.state.selection
       if (from === to) { setSelectionPopup(null); return }
       const range = selection.getRangeAt(0)
       const rect = range.getBoundingClientRect()
-      setSelectionPopup({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 8,
-        text, from, to
-      })
-    }
-    const handleMouseDown = () => setSelectionPopup(null)
-    document.addEventListener('mouseup', handleMouseUp)
-    document.addEventListener('mousedown', handleMouseDown)
-    return () => {
-      document.removeEventListener('mouseup', handleMouseUp)
-      document.removeEventListener('mousedown', handleMouseDown)
-    }
+      setSelectionPopup({ x: rect.left + rect.width / 2, y: rect.top - 8, text, from, to })
+    }, 10)
   }, [editor, onHighlightComment])
 
   if (!editor) return null
@@ -177,6 +165,8 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         onDrop={handleDrop}
         onDragOver={e => e.preventDefault()}
         onPaste={handlePaste}
+        onMouseUp={handleSelectionMouseUp}
+        onMouseDown={() => setSelectionPopup(null)}
         style={{ minHeight: 400, padding: '20px 24px' }}
       >
         <EditorContent editor={editor} />
@@ -237,4 +227,4 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
   )
 }
 
-// fix-effect-deps
+// direct-mouseup
