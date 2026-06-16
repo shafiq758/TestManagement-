@@ -102,7 +102,7 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
       document.removeEventListener('mouseup', handleMouseUp)
       document.removeEventListener('mousedown', handleMouseDown)
     }
-  }, [editor])
+  }, [editor, onHighlightComment])
 
   if (!editor) return null
 
@@ -237,4 +237,4 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
   )
 }
 
-// fix-comment-v2
+// fix-effect-deps
