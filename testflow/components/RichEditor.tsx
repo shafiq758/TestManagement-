@@ -8,6 +8,7 @@ import Link from '@tiptap/extension-link'
 import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import { useRef, useState, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { uploadFile } from '@/lib/uploadFile'
 
 interface RichEditorProps {
@@ -179,8 +180,7 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         <EditorContent editor={editor} />
       </div>
 
-      {/* Selection popup */}
-      {selectionPopup && editable && (
+      {selectionPopup && editable && typeof window !== 'undefined' && createPortal(
         <div style={{
           position: 'fixed',
           left: selectionPopup.x,
@@ -191,27 +191,27 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
           padding: '4px 6px',
           display: 'flex',
           gap: 4,
-          zIndex: 1000,
+          zIndex: 9999,
           boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          pointerEvents: 'auto',
         }}>
           <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleBold().run() }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: editor.isActive('bold') ? '#facc15' : '#fff', fontSize: 13, fontWeight: 700, padding: '2px 8px', borderRadius: 4 }}>B</button>
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 13, fontWeight: 700, padding: '2px 8px' }}>B</button>
           <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleItalic().run() }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: editor.isActive('italic') ? '#facc15' : '#fff', fontSize: 13, padding: '2px 8px', borderRadius: 4, fontStyle: 'italic' }}>I</button>
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 13, padding: '2px 8px', fontStyle: 'italic' }}>I</button>
           <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleHighlight().run() }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: editor.isActive('highlight') ? '#facc15' : '#fff', fontSize: 13, padding: '2px 8px', borderRadius: 4 }}>🖊</button>
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 13, padding: '2px 8px' }}>🖊</button>
           {onHighlightComment && (
             <button onMouseDown={e => {
               e.preventDefault()
               const { text, from, to } = selectionPopup
               setSelectionPopup(null)
               onHighlightComment(text, from, to)
-            }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: 12, padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap', borderLeft: '1px solid #374151' }}>
+            }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: 12, padding: '2px 8px', whiteSpace: 'nowrap', borderLeft: '1px solid #374151' }}>
               💬 Comment
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
 
       <style>{`
@@ -234,4 +234,4 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     </div>
   )
 }
-// selection-popup
+// comment-portal

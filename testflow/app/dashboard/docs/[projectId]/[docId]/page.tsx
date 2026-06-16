@@ -409,17 +409,8 @@ export default function DocEditorPage() {
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
               <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 20 }}>{previewVersion.title}</h1>
-              {/* Render content as read-only */}
-              {previewVersion.content && Object.keys(previewVersion.content).length > 0 ? (
-                <div style={{ fontSize: 14, lineHeight: 1.7, color: '#374151' }}>
-                  <p style={{ color: '#9ca3af', fontStyle: 'italic' }}>Content preview — rich text rendering available in full editor</p>
-                  <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 13 }}>
-                    {JSON.stringify(previewVersion.content, null, 2).slice(0, 500)}…
-                  </pre>
-                </div>
-              ) : (
-                <p style={{ color: '#9ca3af' }}>Empty document</p>
-              )}
+              {/* Render content using read-only editor */}
+              <VersionPreview content={previewVersion.content} />
             </div>
           </div>
         </div>
@@ -466,3 +457,59 @@ export default function DocEditorPage() {
     </div>
   )
 }
+
+// ─── Version Preview Component ─────────────────────────────────────────────
+function VersionPreview({ content }: { content: any }) {
+  if (!content || Object.keys(content).length === 0) {
+    return <p style={{ color: '#9ca3af', fontStyle: 'italic' }}>Empty document</p>
+  }
+
+  const renderNode = (node: any): React.ReactNode => {
+    if (!node) return null
+
+    const children = node.content?.map((child: any, i: number) => (
+      <span key={i}>{renderNode(child)}</span>
+    ))
+
+    const marks = node.marks || []
+    let text: React.ReactNode = node.text || children
+
+    marks.forEach((mark: any) => {
+      if (mark.type === 'bold') text = <strong>{text}</strong>
+      if (mark.type === 'italic') text = <em>{text}</em>
+      if (mark.type === 'underline') text = <u>{text}</u>
+      if (mark.type === 'strike') text = <s>{text}</s>
+      if (mark.type === 'highlight') text = <mark style={{ background: '#fef9c3', padding: '1px 0' }}>{text}</mark>
+      if (mark.type === 'code') text = <code style={{ background: '#f3f4f6', padding: '1px 5px', borderRadius: 3, fontFamily: 'monospace', fontSize: 13 }}>{text}</code>
+    })
+
+    switch (node.type) {
+      case 'doc': return <div>{children}</div>
+      case 'paragraph': return <p style={{ margin: '0 0 8px', textAlign: node.attrs?.textAlign || 'left' }}>{children || <br />}</p>
+      case 'heading': {
+        const level = node.attrs?.level || 1
+        const sizes: Record<number, string> = { 1: '24px', 2: '20px', 3: '16px' }
+        const weights: Record<number, number> = { 1: 700, 2: 600, 3: 600 }
+        return <div style={{ fontSize: sizes[level] || '16px', fontWeight: weights[level] || 600, margin: '16px 0 6px' }}>{children}</div>
+      }
+      case 'bulletList': return <ul style={{ paddingLeft: 24, margin: '0 0 8px' }}>{children}</ul>
+      case 'orderedList': return <ol style={{ paddingLeft: 24, margin: '0 0 8px' }}>{children}</ol>
+      case 'listItem': return <li style={{ marginBottom: 2 }}>{children}</li>
+      case 'blockquote': return <blockquote style={{ borderLeft: '3px solid #e5e7eb', paddingLeft: 16, color: '#6b7280', margin: '8px 0' }}>{children}</blockquote>
+      case 'codeBlock': return <pre style={{ background: '#1e1e2e', color: '#cdd6f4', padding: 16, borderRadius: 8, overflow: 'auto', margin: '8px 0', fontSize: 13 }}><code>{children}</code></pre>
+      case 'hardBreak': return <br />
+      case 'horizontalRule': return <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '16px 0' }} />
+      case 'image': return <img src={node.attrs?.src} alt={node.attrs?.alt || ''} style={{ maxWidth: '100%', borderRadius: 8, margin: '8px 0' }} />
+      case 'text': return text
+      default: return <span>{children}</span>
+    }
+  }
+
+  return (
+    <div style={{ fontSize: 14, lineHeight: 1.7, color: '#111' }}>
+      {renderNode(content)}
+    </div>
+  )
+}
+
+// version-preview
