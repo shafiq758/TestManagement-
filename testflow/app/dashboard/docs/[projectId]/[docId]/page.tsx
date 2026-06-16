@@ -84,6 +84,17 @@ export default function DocEditorPage() {
     setMyRole(memberRole)
     setComments(comms || [])
     setLoading(false)
+    // Debug — remove after fixing
+    console.log('DOC DEBUG:', {
+      published: docData.published,
+      visibility: docData.visibility,
+      comment_access: docData.comment_access,
+      created_by: docData.created_by,
+      uid: session.user.id,
+      isAuthor: docData.created_by === session.user.id,
+      memberRole,
+      workspaceId: projData?.workspace_id,
+    })
   }
 
   const canEdit = isAuthor // only author can edit content
@@ -532,5 +543,3 @@ function VersionPreview({ content }: { content: any }) {
     </div>
   )
 }
-
-// fix-role-query
