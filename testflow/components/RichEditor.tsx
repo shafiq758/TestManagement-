@@ -8,7 +8,6 @@ import Link from '@tiptap/extension-link'
 import TextAlign from '@tiptap/extension-text-align'
 import Placeholder from '@tiptap/extension-placeholder'
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { uploadFile } from '@/lib/uploadFile'
 
 interface RichEditorProps {
@@ -20,10 +19,12 @@ interface RichEditorProps {
   placeholder?: string
 }
 
-export default function RichEditor({ content, onChange, onHighlightComment, editable = true, canComment = false, placeholder = 'Start writing your document…' }: RichEditorProps) {
+export default function RichEditor({ content, onChange, onHighlightComment, editable = true, canComment = false, placeholder = 'Start writing…' }: RichEditorProps) {
   const [uploading, setUploading] = useState(false)
-  const [selectionPopup, setSelectionPopup] = useState<{x: number; y: number; text: string; from: number; to: number} | null>(null)
+  const [hasSelection, setHasSelection] = useState(false)
+  const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const editorContainerRef = useRef<HTMLDivElement>(null)
 
   const editor = useEditor({
     extensions: [
@@ -37,8 +38,22 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     ],
     content: content || '',
     editable,
-    onUpdate: ({ editor }) => {
-      onChange(editor.getJSON())
+    onUpdate: ({ editor }) => onChange(editor.getJSON()),
+    onSelectionUpdate: ({ editor }) => {
+      const { from, to } = editor.state.selection
+      const hasText = from !== to && editor.state.doc.textBetween(from, to).trim().length > 0
+      setHasSelection(hasText)
+      if (hasText) {
+        // Get selection rect after a tick
+        setTimeout(() => {
+          const sel = window.getSelection()
+          if (sel && sel.rangeCount > 0) {
+            setSelectionRect(sel.getRangeAt(0).getBoundingClientRect())
+          }
+        }, 0)
+      } else {
+        setSelectionRect(null)
+      }
     },
   })
 
@@ -48,9 +63,7 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     try {
       const result = await uploadFile(file, 'docs')
       editor.chain().focus().setImage({ src: result.url, alt: file.name }).run()
-    } catch (e) {
-      console.error('Image upload failed:', e)
-    }
+    } catch (e) { console.error('Image upload failed:', e) }
     setUploading(false)
   }, [editor])
 
@@ -76,21 +89,12 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     }
   }, [addImage])
 
-  // Handle text selection for comment popup — called directly on mouseup
-  const handleSelectionMouseUp = useCallback(() => {
-    if (!onHighlightComment || !editor) return
-    setTimeout(() => {
-      const selection = window.getSelection()
-      if (!selection || selection.isCollapsed) { setSelectionPopup(null); return }
-      const text = selection.toString().trim()
-      if (!text) { setSelectionPopup(null); return }
-      const { from, to } = editor.state.selection
-      if (from === to) { setSelectionPopup(null); return }
-      const range = selection.getRangeAt(0)
-      const rect = range.getBoundingClientRect()
-      setSelectionPopup({ x: rect.left + rect.width / 2, y: rect.top - 8, text, from, to })
-    }, 10)
-  }, [editor, onHighlightComment])
+  const handleComment = () => {
+    if (!editor || !onHighlightComment) return
+    const { from, to } = editor.state.selection
+    const text = editor.state.doc.textBetween(from, to).trim()
+    if (text) onHighlightComment(text, from, to)
+  }
 
   if (!editor) return null
 
@@ -106,51 +110,43 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     fontFamily: 'inherit',
   })
 
+  // Floating popup for selection
+  const showPopup = hasSelection && selectionRect && (editable || canComment) && onHighlightComment
+
   return (
-    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
+    <div ref={editorContainerRef} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
       {/* Toolbar */}
       {editable && (
         <div style={{ display: 'flex', gap: 4, padding: '8px 12px', borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap', alignItems: 'center', background: '#fafafa' }}>
-          {/* Text style */}
           <button onClick={() => editor.chain().focus().toggleBold().run()} style={btn(editor.isActive('bold'))}><b>B</b></button>
           <button onClick={() => editor.chain().focus().toggleItalic().run()} style={btn(editor.isActive('italic'))}><i>I</i></button>
           <button onClick={() => editor.chain().focus().toggleUnderline().run()} style={btn(editor.isActive('underline'))}><u>U</u></button>
           <button onClick={() => editor.chain().focus().toggleStrike().run()} style={btn(editor.isActive('strike'))}><s>S</s></button>
           <button onClick={() => editor.chain().focus().toggleHighlight().run()} style={btn(editor.isActive('highlight'))}>🖊</button>
-
           <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 4px' }} />
-
-          {/* Headings */}
           {([1,2,3] as const).map(level => (
             <button key={level} onClick={() => editor.chain().focus().toggleHeading({ level }).run()} style={btn(editor.isActive('heading', { level }))}>H{level}</button>
           ))}
-
           <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 4px' }} />
-
-          {/* Lists */}
           <button onClick={() => editor.chain().focus().toggleBulletList().run()} style={btn(editor.isActive('bulletList'))}>• List</button>
           <button onClick={() => editor.chain().focus().toggleOrderedList().run()} style={btn(editor.isActive('orderedList'))}>1. List</button>
           <button onClick={() => editor.chain().focus().toggleCodeBlock().run()} style={btn(editor.isActive('codeBlock'))}>{'</>'}</button>
           <button onClick={() => editor.chain().focus().toggleBlockquote().run()} style={btn(editor.isActive('blockquote'))}>❝</button>
-
           <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 4px' }} />
-
-          {/* Alignment */}
           <button onClick={() => editor.chain().focus().setTextAlign('left').run()} style={btn(editor.isActive({ textAlign: 'left' }))}>←</button>
           <button onClick={() => editor.chain().focus().setTextAlign('center').run()} style={btn(editor.isActive({ textAlign: 'center' }))}>↔</button>
           <button onClick={() => editor.chain().focus().setTextAlign('right').run()} style={btn(editor.isActive({ textAlign: 'right' }))}>→</button>
-
           <div style={{ width: 1, height: 20, background: '#e5e7eb', margin: '0 4px' }} />
-
-          {/* Image */}
           <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFileChange} />
-          <button onClick={() => fileInputRef.current?.click()} style={btn(false)} disabled={uploading}>
-            {uploading ? '⏳' : '🖼 Image'}
-          </button>
-
-          {/* Horizontal rule */}
+          <button onClick={() => fileInputRef.current?.click()} style={btn(false)} disabled={uploading}>{uploading ? '⏳' : '🖼 Image'}</button>
           <button onClick={() => editor.chain().focus().setHorizontalRule().run()} style={btn(false)}>─</button>
-
+          {/* Comment button in toolbar — shows when text selected */}
+          {canComment && onHighlightComment && hasSelection && (
+            <button onClick={handleComment}
+              style={{ ...btn(false), background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', marginLeft: 8 }}>
+              💬 Comment on selection
+            </button>
+          )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
             <button onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} style={{ ...btn(false), opacity: editor.can().undo() ? 1 : 0.4 }}>↩</button>
             <button onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} style={{ ...btn(false), opacity: editor.can().redo() ? 1 : 0.4 }}>↪</button>
@@ -158,53 +154,28 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         </div>
       )}
 
-
+      {/* For read-only users who can comment — show a comment bar */}
+      {!editable && canComment && onHighlightComment && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #e5e7eb', background: '#eff6ff' }}>
+          <span style={{ fontSize: 12, color: '#2563eb' }}>💬 Select text then click to comment</span>
+          {hasSelection && (
+            <button onClick={handleComment}
+              style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
+              + Add comment
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Editor content */}
       <div
         onDrop={handleDrop}
         onDragOver={e => e.preventDefault()}
         onPaste={handlePaste}
-        onMouseUp={handleSelectionMouseUp}
-        onMouseDown={() => setSelectionPopup(null)}
         style={{ minHeight: 400, padding: '20px 24px' }}
       >
         <EditorContent editor={editor} />
       </div>
-
-      {selectionPopup && (editable || canComment) && typeof window !== 'undefined' && createPortal(
-        <div style={{
-          position: 'fixed',
-          left: selectionPopup.x,
-          top: selectionPopup.y,
-          transform: 'translateX(-50%) translateY(-100%)',
-          background: '#111',
-          borderRadius: 8,
-          padding: '4px 6px',
-          display: 'flex',
-          gap: 4,
-          zIndex: 9999,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        }}>
-          <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleBold().run() }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 13, fontWeight: 700, padding: '2px 8px' }}>B</button>
-          <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleItalic().run() }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 13, padding: '2px 8px', fontStyle: 'italic' }}>I</button>
-          <button onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleHighlight().run() }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 13, padding: '2px 8px' }}>🖊</button>
-          {onHighlightComment && (
-            <button onMouseDown={e => {
-              e.preventDefault()
-              const { text, from, to } = selectionPopup
-              setSelectionPopup(null)
-              onHighlightComment(text, from, to)
-            }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#93c5fd', fontSize: 12, padding: '2px 8px', whiteSpace: 'nowrap', borderLeft: '1px solid #374151' }}>
-              💬 Comment
-            </button>
-          )}
-        </div>,
-        document.body
-      )}
 
       <style>{`
         .ProseMirror { outline: none; font-size: 14px; line-height: 1.7; color: #111; }
@@ -222,9 +193,10 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         .ProseMirror mark { background: #fef9c3; border-radius: 2px; padding: 1px 0; }
         .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: #9ca3af; pointer-events: none; float: left; height: 0; }
         .ProseMirror a { color: #2563eb; text-decoration: underline; }
+        .ProseMirror ::selection { background: #bfdbfe; }
       `}</style>
     </div>
   )
 }
 
-// direct-mouseup
+// comment-toolbar
