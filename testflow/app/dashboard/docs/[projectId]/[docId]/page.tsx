@@ -297,7 +297,7 @@ export default function DocEditorPage() {
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
               {canComment ? (
                 <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>
-                  💬 Comments enabled
+                  💬 Comments enabled (role: {myRole})
                 </span>
               ) : (
                 <span style={{ fontSize: 11, background: '#f3f4f6', color: '#9ca3af', padding: '2px 8px', borderRadius: 4 }}>
