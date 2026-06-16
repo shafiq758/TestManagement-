@@ -170,7 +170,7 @@ export default function DocEditorPage() {
 
   // Handle highlight comment
   const handleHighlightComment = (text: string, from: number, to: number) => {
-    setPendingComment({ text, from, to })
+    setPendingComment({ text: text || '(General comment)', from, to })
     setCommentText('')
     setShowCommentModal(true)
   }
@@ -525,4 +525,4 @@ function VersionPreview({ content }: { content: any }) {
   )
 }
 
-// comment-debug
+// comment-outside-editor
