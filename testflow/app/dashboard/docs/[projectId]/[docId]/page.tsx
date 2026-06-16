@@ -84,6 +84,17 @@ export default function DocEditorPage() {
     setMyRole(memberRole)
     setComments(comms || [])
     setLoading(false)
+    // Debug — remove after fixing
+    console.log('DOC DEBUG:', {
+      published: docData.published,
+      visibility: docData.visibility,
+      comment_access: docData.comment_access,
+      created_by: docData.created_by,
+      uid: session.user.id,
+      isAuthor: docData.created_by === session.user.id,
+      memberRole,
+      workspaceId: projData?.workspace_id,
+    })
   }
 
   const canEdit = isAuthor // only author can edit content
@@ -286,7 +297,7 @@ export default function DocEditorPage() {
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
               {canComment ? (
                 <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>
-                  💬 Comments enabled
+                  💬 Comments enabled (role: {myRole})
                 </span>
               ) : (
                 <span style={{ fontSize: 11, background: '#f3f4f6', color: '#9ca3af', padding: '2px 8px', borderRadius: 4 }}>
@@ -296,13 +307,29 @@ export default function DocEditorPage() {
             </div>
           </div>
 
+          {/* Comment bar for non-editors who can comment */}
+          {canComment && !canEdit && (
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 13, color: '#2563eb' }}>💬 You can comment on this document</span>
+              <button onClick={() => {
+                setPendingComment({ text: '(General comment)', from: 0, to: 0 })
+                setCommentText('')
+                setShowCommentModal(true)
+              }} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
+                + Add comment
+              </button>
+            </div>
+          )}
+
           {/* Editor */}
           <RichEditor
+            key={`editor-${canComment}-${canEdit}`}
             content={content}
             onChange={handleContentChange}
             onHighlightComment={canComment ? handleHighlightComment : undefined}
             editable={canEdit}
-            placeholder="Start writing your document… Select text to highlight and add a comment."
+            canComment={canComment}
+            placeholder="Start writing your document…"
           />
         </div>
 
@@ -533,4 +560,4 @@ function VersionPreview({ content }: { content: any }) {
   )
 }
 
-// fix-role-query
+// comment-bar-v3
