@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase'
 import { canEditCases } from '@/lib/roles'
 import type { WorkspaceRole } from '@/types'
 import dynamic from 'next/dynamic'
+import MentionInput from '@/components/MentionInput'
 
 // Load editor dynamically to avoid SSR issues
 const RichEditor = dynamic(() => import('@/components/RichEditor'), { ssr: false, loading: () => (
@@ -40,6 +41,7 @@ export default function DocEditorPage() {
   const [pendingComment, setPendingComment] = useState<{text: string; from: number; to: number} | null>(null)
   const [commentText, setCommentText] = useState('')
   const [comments, setComments] = useState<any[]>([])
+  const [members, setMembers] = useState<any[]>([])
   const [replies, setReplies] = useState<Record<string, any[]>>({})
   const [replyText, setReplyText] = useState<Record<string, string>>({})
   const [showReplyInput, setShowReplyInput] = useState<Record<string, boolean>>({})
@@ -53,12 +55,13 @@ export default function DocEditorPage() {
     const { data: { session } } = await sb.auth.getSession()
     if (!session) { router.replace('/auth'); return }
 
-    const [{ data: docData }, { data: sprs }, { data: mils }, { data: projData }, { data: comms }] = await Promise.all([
+    const [{ data: docData }, { data: sprs }, { data: mils }, { data: projData }, { data: comms }, { data: membersData }] = await Promise.all([
       sb.from('documents').select('*').eq('id', docId).single(),
       sb.from('sprints').select('*').eq('project_id', projectId),
       sb.from('milestones').select('*').eq('project_id', projectId),
       sb.from('projects').select('workspace_id').eq('id', projectId).single(),
       sb.from('document_comments').select('*').eq('document_id', docId).order('created_at'),
+      sb.from('workspace_members').select('user_id, role, invited_email').eq('workspace_id', (await sb.from('projects').select('workspace_id').eq('id', projectId).single()).data?.workspace_id || ''),
     ])
 
     if (!docData) { router.push(`/dashboard/docs/${projectId}`); return }
@@ -85,6 +88,7 @@ export default function DocEditorPage() {
       memberRole = (memberData?.role || 'viewer') as WorkspaceRole
     }
     setMyRole(memberRole)
+    setMembers((membersData || []).map((m: any) => ({ id: m.user_id, email: m.invited_email, name: m.invited_email?.split('@')[0] })))
     const commsData = comms || []
     setComments(commsData)
     // Load replies for all comments
@@ -403,9 +407,16 @@ export default function DocEditorPage() {
                 {/* Reply input */}
                 {showReplyInput[comment.id] && (
                   <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-                    <input value={replyText[comment.id] || ''} onChange={e => setReplyText(p => ({ ...p, [comment.id]: e.target.value }))}
-                      placeholder="Write a reply…" onKeyDown={e => e.key === 'Enter' && submitReply(comment.id)}
-                      style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 8px', fontSize: 12, outline: 'none' }} />
+                    <div style={{ flex: 1 }}>
+                      <MentionInput
+                        value={replyText[comment.id] || ''}
+                        onChange={val => setReplyText(p => ({ ...p, [comment.id]: val }))}
+                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && submitReply(comment.id)}
+                        members={members}
+                        placeholder="Reply… @ to mention"
+                        rows={1}
+                      />
+                    </div>
                     <button onClick={() => submitReply(comment.id)}
                       style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
                       Send
@@ -426,9 +437,14 @@ export default function DocEditorPage() {
             <div style={{ background: '#fef9c3', borderRadius: 6, padding: '6px 10px', fontSize: 13, color: '#92400e', marginBottom: 12, fontStyle: 'italic' }}>
               "{pendingComment.text}"
             </div>
-            <textarea value={commentText} onChange={e => setCommentText(e.target.value)}
-              placeholder="Write your comment…" rows={3} autoFocus
-              style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+            <MentionInput
+              value={commentText}
+              onChange={setCommentText}
+              members={members}
+              placeholder="Write your comment… type @ to mention someone"
+              rows={3}
+              style={{ resize: 'vertical' }}
+            />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
               <button onClick={() => { setShowCommentModal(false); setPendingComment(null) }}
                 style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
