@@ -10,6 +10,8 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { uploadFile } from '@/lib/uploadFile'
 
+interface Member { id: string; email: string; name?: string }
+
 interface RichEditorProps {
   content: any
   onChange: (content: any) => void
@@ -17,10 +19,13 @@ interface RichEditorProps {
   editable?: boolean
   canComment?: boolean
   placeholder?: string
+  members?: Member[]
 }
 
-export default function RichEditor({ content, onChange, onHighlightComment, editable = true, canComment = false, placeholder = 'Start writing…' }: RichEditorProps) {
+export default function RichEditor({ content, onChange, onHighlightComment, editable = true, canComment = false, placeholder = 'Start writing…', members = [] }: RichEditorProps) {
   const [uploading, setUploading] = useState(false)
+  const [mentionPopup, setMentionPopup] = useState<{query: string; x: number; y: number} | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
   const [hasSelection, setHasSelection] = useState(false)
   const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -38,7 +43,20 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     ],
     content: content || '',
     editable,
-    onUpdate: ({ editor }) => onChange(editor.getJSON()),
+    onUpdate: ({ editor }) => {
+      onChange(editor.getJSON())
+      // Check for @mention trigger
+      const { from } = editor.state.selection
+      const textBefore = editor.state.doc.textBetween(Math.max(0, from - 20), from)
+      const atMatch = textBefore.match(/@(\w*)$/)
+      if (atMatch && editable) {
+        const coords = editor.view.coordsAtPos(from)
+        setMentionPopup({ query: atMatch[1], x: coords.left, y: coords.bottom + 4 })
+        setMentionIndex(0)
+      } else {
+        setMentionPopup(null)
+      }
+    },
     onSelectionUpdate: ({ editor }) => {
       const { from, to } = editor.state.selection
       const hasText = from !== to && editor.state.doc.textBetween(from, to).trim().length > 0
@@ -88,6 +106,28 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
       if (file) await addImage(file)
     }
   }, [addImage])
+
+  const insertMention = (member: Member) => {
+    if (!editor) return
+    const { from } = editor.state.selection
+    const textBefore = editor.state.doc.textBetween(Math.max(0, from - 20), from)
+    const atMatch = textBefore.match(/@(\w*)$/)
+    if (!atMatch) return
+    const deleteFrom = from - atMatch[0].length
+    const displayName = member.name || member.email.split('@')[0]
+    editor.chain().focus()
+      .deleteRange({ from: deleteFrom, to: from })
+      .insertContent(`@${displayName} `)
+      .run()
+    setMentionPopup(null)
+  }
+
+  const filteredMentionMembers = mentionPopup
+    ? members.filter(m => {
+        const q = mentionPopup.query.toLowerCase()
+        return !q || (m.name || '').toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
+      }).slice(0, 6)
+    : []
 
   const handleComment = () => {
     if (!editor || !onHighlightComment) return
@@ -177,6 +217,26 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         <EditorContent editor={editor} />
       </div>
 
+      {/* @mention popup */}
+      {mentionPopup && filteredMentionMembers.length > 0 && typeof window !== 'undefined' && (
+        <div style={{
+          position: 'fixed', left: mentionPopup.x, top: mentionPopup.y,
+          background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 9999, minWidth: 200, overflow: 'hidden',
+        }}>
+          <div style={{ padding: '5px 10px 4px', fontSize: 10, color: '#9ca3af', fontWeight: 600, borderBottom: '1px solid #f3f4f6' }}>MENTION</div>
+          {filteredMentionMembers.map((member, i) => (
+            <div key={member.id} onMouseDown={() => insertMention(member)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', cursor: 'pointer', background: i === mentionIndex ? '#eff6ff' : '#fff' }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600, color: '#fff', flexShrink: 0 }}>
+                {(member.name || member.email)[0].toUpperCase()}
+              </div>
+              <span style={{ fontSize: 13 }}>{member.name || member.email.split('@')[0]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <style>{`
         .ProseMirror { outline: none; font-size: 14px; line-height: 1.7; color: #111; }
         .ProseMirror h1 { font-size: 24px; font-weight: 700; margin: 20px 0 8px; }
@@ -193,10 +253,9 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         .ProseMirror mark { background: #fef9c3; border-radius: 2px; padding: 1px 0; }
         .ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: #9ca3af; pointer-events: none; float: left; height: 0; }
         .ProseMirror a { color: #2563eb; text-decoration: underline; }
+        .ProseMirror .mention { color: #2563eb; font-weight: 600; background: #eff6ff; padding: 1px 4px; border-radius: 3px; }
         .ProseMirror ::selection { background: #bfdbfe; }
       `}</style>
     </div>
   )
 }
-
-// comment-toolbar
