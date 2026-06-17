@@ -17,6 +17,7 @@ export default function DocsListPage() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
   const sb = createClient()
 
   useEffect(() => { load() }, [projectId])
@@ -41,12 +42,15 @@ export default function DocsListPage() {
     setLoading(false)
   }
 
-  const createDoc = async () => {
+  const createDoc = async (template: 'plain' | 'prd') => {
     setCreating(true)
+    setShowTemplateModal(false)
     const { data: { session } } = await sb.auth.getSession()
+    const isPrd = template === 'prd'
     const { data: doc } = await sb.from('documents').insert({
-      title: 'Untitled Document',
-      content: {},
+      title: isPrd ? 'New PRD' : 'Untitled Document',
+      content: isPrd ? {"type": "doc", "content": [{"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Problem Statement"}]}, {"type": "paragraph", "content": [{"type": "text", "text": "Describe the problem this feature or product aims to solve."}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Objectives"}]}, {"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": "Business Goals"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add business goal here"}]}]}]}, {"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": "User Goals"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add user goal here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Target Persona"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add persona here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Solution"}]}, {"type": "paragraph", "content": [{"type": "text", "text": "Describe the proposed solution."}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Requirements"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add requirement here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Success Metrics"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add metric here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Out of Scope"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add out of scope item here"}]}]}]}]} : {},
+      doc_type: template,
       project_id: projectId,
       created_by: session?.user.id,
       updated_by: session?.user.id,
@@ -83,7 +87,7 @@ export default function DocsListPage() {
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>📄 Docs</h1>
           </div>
           {canEdit && (
-            <button onClick={createDoc} disabled={creating}
+            <button onClick={() => setShowTemplateModal(true)} disabled={creating}
               style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 500, cursor: creating ? 'not-allowed' : 'pointer', opacity: creating ? 0.6 : 1 }}>
               {creating ? 'Creating…' : '+ New document'}
             </button>
@@ -105,7 +109,7 @@ export default function DocsListPage() {
             <p style={{ fontSize: 40, margin: '0 0 12px' }}>📄</p>
             <p style={{ fontWeight: 600, fontSize: 16, margin: '0 0 8px' }}>No documents yet</p>
             <p style={{ fontSize: 14, color: '#6b7280', margin: '0 0 20px' }}>Create PRDs, test strategies, and specs linked to your sprints.</p>
-            {canEdit && <button onClick={createDoc} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer' }}>+ Create first document</button>}
+            {canEdit && <button onClick={() => setShowTemplateModal(true)} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer' }}>+ Create first document</button>}
           </div>
         )}
 
@@ -132,8 +136,9 @@ export default function DocsListPage() {
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                    {doc.doc_type === 'prd' && <span style={{ fontSize: 11, background: '#f5f3ff', color: '#7c3aed', padding: '2px 7px', borderRadius: 4, fontWeight: 600 }}>📋 PRD</span>}
                     {sprint && <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 4, fontWeight: 500 }}>🏃 {sprint.name}</span>}
-                    {milestone && <span style={{ fontSize: 11, background: '#f5f3ff', color: '#7c3aed', padding: '2px 7px', borderRadius: 4, fontWeight: 500 }}>🎯 {milestone.name}</span>}
+                    {milestone && <span style={{ fontSize: 11, background: '#eff6ff', color: '#2563eb', padding: '2px 7px', borderRadius: 4, fontWeight: 500 }}>🎯 {milestone.name}</span>}
                   </div>
                   <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>
                     Updated {new Date(doc.updated_at).toLocaleDateString()}
@@ -148,6 +153,40 @@ export default function DocsListPage() {
           <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: '32px 0' }}>No documents match your search.</p>
         )}
       </div>
+
+      {/* Template selection modal */}
+      {showTemplateModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 500, padding: 28, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
+            <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 600 }}>Choose a template</h2>
+            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#6b7280' }}>Start with a blank document or a pre-structured PRD.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+              {/* Plain doc */}
+              <div onClick={() => createDoc('plain')}
+                style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#111'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>📄</div>
+                <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 600 }}>Plain Document</p>
+                <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Start with a blank canvas. No structure imposed.</p>
+              </div>
+              {/* PRD */}
+              <div onClick={() => createDoc('prd')}
+                style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(124,58,237,0.1)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>📋</div>
+                <p style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 600 }}>PRD</p>
+                <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Product Requirements Document with structured sections and metadata.</p>
+              </div>
+            </div>
+            <button onClick={() => setShowTemplateModal(false)}
+              style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: 8, padding: '9px 0', fontSize: 13, background: '#fff', cursor: 'pointer', color: '#6b7280' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -19,6 +19,8 @@ export default function DocEditorPage() {
   const docId = params.docId as string
 
   const [doc, setDoc] = useState<any>(null)
+  const [docType, setDocType] = useState<'plain' | 'prd'>('plain')
+  const [prdMeta, setPrdMeta] = useState({ category: '', status: 'Draft', authorName: '', createdAt: '', updatedAt: '' })
   const [title, setTitle] = useState('')
   const [content, setContent] = useState<any>({})
   const [sprints, setSprints] = useState<any[]>([])
@@ -69,6 +71,14 @@ export default function DocEditorPage() {
     const uid = session.user.id
     setUserId(uid)
     setDoc(docData)
+    setDocType(docData.doc_type || 'plain')
+    setPrdMeta({
+      category: docData.prd_category || '',
+      status: docData.prd_status || 'Draft',
+      authorName: docData.prd_author || '',
+      createdAt: docData.created_at ? new Date(docData.created_at).toLocaleString() : '',
+      updatedAt: docData.updated_at ? new Date(docData.updated_at).toLocaleString() : '',
+    })
     setTitle(docData.title)
     setContent(docData.content || {})
     setSelectedSprintId(docData.sprint_id || '')
@@ -132,6 +142,14 @@ export default function DocEditorPage() {
   })()
 
   // Auto-save with debounce
+  const autoSavePrdMeta = useCallback(async (meta: typeof prdMeta) => {
+    await sb.from('documents').update({
+      prd_category: meta.category,
+      prd_status: meta.status,
+      updated_at: new Date().toISOString(),
+    }).eq('id', docId)
+  }, [docId])
+
   const autoSave = useCallback(async (newTitle: string, newContent: any, sprintId: string, milestoneId: string) => {
     if (!canEdit) return
     clearTimeout(saveTimer.current)
@@ -271,6 +289,9 @@ export default function DocEditorPage() {
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', fontFamily: 'inherit', padding: 0 }}>
           ← Docs
         </button>
+        {docType === 'prd' && (
+          <span style={{ fontSize: 11, background: '#f5f3ff', color: '#7c3aed', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>📋 PRD</span>
+        )}
         <span style={{ color: '#e5e7eb' }}>|</span>
 
         {/* Save status */}
@@ -309,7 +330,46 @@ export default function DocEditorPage() {
             <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 20, color: '#111' }}>{title}</h1>
           )}
 
-          {/* Metadata row */}
+          {/* PRD Metadata Table */}
+          {docType === 'prd' && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 24 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <tbody>
+                  {[
+                    { label: 'Created by', value: prdMeta.authorName || 'Unknown', editable: false, icon: '👤' },
+                    { label: 'Created time', value: prdMeta.createdAt, editable: false, icon: '🕐' },
+                    { label: 'Category', value: prdMeta.category, editable: true, field: 'category', icon: '📂' },
+                    { label: 'Last updated', value: prdMeta.updatedAt, editable: false, icon: '✏️' },
+                    { label: 'Status', value: prdMeta.status, editable: true, field: 'status', icon: '🔄', isStatus: true },
+                  ].map((row, i) => (
+                    <tr key={row.label} style={{ borderBottom: i < 4 ? '1px solid #e5e7eb' : 'none' }}>
+                      <td style={{ padding: '8px 14px', background: '#fafafa', color: '#6b7280', fontSize: 12, width: 140, borderRight: '1px solid #e5e7eb' }}>
+                        <span style={{ marginRight: 6 }}>{row.icon}</span>{row.label}
+                      </td>
+                      <td style={{ padding: '8px 14px' }}>
+                        {row.isStatus && canEdit ? (
+                          <select value={prdMeta.status} onChange={e => { setPrdMeta(p => ({ ...p, status: e.target.value })); autoSavePrdMeta({ ...prdMeta, status: e.target.value }) }}
+                            style={{ border: 'none', outline: 'none', fontSize: 13, cursor: 'pointer', background: 'transparent', fontFamily: 'inherit' }}>
+                            {['Draft', 'In Progress', 'Review', 'Approved', 'Deprecated'].map(s => <option key={s}>{s}</option>)}
+                          </select>
+                        ) : row.isStatus ? (
+                          <span style={{ background: prdMeta.status === 'Approved' ? '#dcfce7' : prdMeta.status === 'In Progress' ? '#eff6ff' : prdMeta.status === 'Review' ? '#fef9c3' : '#f3f4f6', color: prdMeta.status === 'Approved' ? '#15803d' : prdMeta.status === 'In Progress' ? '#2563eb' : prdMeta.status === 'Review' ? '#ca8a04' : '#374151', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 500 }}>{prdMeta.status}</span>
+                        ) : row.editable && canEdit ? (
+                          <input value={prdMeta[row.field as keyof typeof prdMeta]} onChange={e => { setPrdMeta(p => ({ ...p, [row.field!]: e.target.value })); autoSavePrdMeta({ ...prdMeta, [row.field!]: e.target.value }) }}
+                            placeholder={`Add ${row.label.toLowerCase()}…`}
+                            style={{ border: 'none', outline: 'none', fontSize: 13, width: '100%', fontFamily: 'inherit', background: 'transparent' }} />
+                        ) : (
+                          <span style={{ color: row.value ? '#111' : '#9ca3af' }}>{row.value || '—'}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Sprint/Milestone Metadata row */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontSize: 12, color: '#9ca3af' }}>🏃 Sprint</span>
