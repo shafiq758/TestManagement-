@@ -67,6 +67,12 @@ export default function DocEditorPage() {
     ])
 
     if (!docData) { router.push(`/dashboard/docs/${projectId}`); return }
+    // Redirect if unpublished and not the author
+    const isDocAuthor = docData.created_by === session.user.id
+    if (!docData.published && !isDocAuthor) {
+      router.push(`/dashboard/docs/${projectId}`)
+      return
+    }
 
     const uid = session.user.id
     setUserId(uid)
@@ -198,12 +204,17 @@ export default function DocEditorPage() {
 
   // Save version manually
   const publishDoc = async (vis: string, ca: string, pub: boolean) => {
+    const { data: { session } } = await sb.auth.getSession()
+    // Save author display name at publish time so others can see it
+    const authorDisplayName = session?.user.user_metadata?.name || session?.user.email?.split('@')[0] || 'Unknown'
     await sb.from('documents').update({
       visibility: vis,
       comment_access: ca,
       published: pub,
+      prd_author: authorDisplayName,
       updated_at: new Date().toISOString(),
     }).eq('id', docId)
+    setPrdMeta(p => ({ ...p, authorName: authorDisplayName }))
     setVisibility(vis as any)
     setCommentAccess(ca as any)
     setPublished(pub)
