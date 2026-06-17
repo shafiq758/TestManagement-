@@ -72,10 +72,19 @@ export default function DocEditorPage() {
     setUserId(uid)
     setDoc(docData)
     setDocType(docData.doc_type || 'plain')
+    // Fetch author name from workspace_members
+    let authorName = ''
+    if (docData.created_by) {
+      const { data: authorMember } = await sb.from('workspace_members')
+        .select('invited_email, display_name')
+        .eq('user_id', docData.created_by)
+        .single()
+      authorName = authorMember?.display_name || authorMember?.invited_email?.split('@')[0] || 'Unknown'
+    }
     setPrdMeta({
       category: docData.prd_category || '',
       status: docData.prd_status || 'Draft',
-      authorName: docData.prd_author || '',
+      authorName,
       createdAt: docData.created_at ? new Date(docData.created_at).toLocaleString() : '',
       updatedAt: docData.updated_at ? new Date(docData.updated_at).toLocaleString() : '',
     })
