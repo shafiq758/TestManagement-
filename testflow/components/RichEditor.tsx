@@ -51,8 +51,10 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
       const { from } = editor.state.selection
       const textBefore = editor.state.doc.textBetween(Math.max(0, from - 20), from)
       const atMatch = textBefore.match(/@(\w*)$/)
+      console.log('MENTION CHECK:', { textBefore, atMatch, editable, membersCount: membersRef.current.length })
       if (atMatch && editable) {
         const coords = editor.view.coordsAtPos(from)
+        console.log('SETTING POPUP:', { query: atMatch[1], coords })
         setMentionPopup({ query: atMatch[1], x: coords.left, y: coords.bottom + 4 })
         setMentionIndex(0)
       } else {
