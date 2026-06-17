@@ -26,13 +26,19 @@ export default function DocsListPage() {
     const { data: { session } } = await sb.auth.getSession()
     if (!session) { router.replace('/auth'); return }
 
-    const [{ data: proj }, { data: docsData }, { data: sprs }, { data: mils }, { data: member }] = await Promise.all([
+    const [{ data: proj }, { data: sprs }, { data: mils }, { data: member }] = await Promise.all([
       sb.from('projects').select('*, workspaces(name)').eq('id', projectId).single(),
-      sb.from('documents').select('*').eq('project_id', projectId).order('updated_at', { ascending: false }),
       sb.from('sprints').select('*').eq('project_id', projectId),
       sb.from('milestones').select('*').eq('project_id', projectId),
       sb.from('workspace_members').select('role').eq('user_id', session.user.id).single(),
     ])
+
+    // Only show: published docs OR docs created by current user
+    const { data: docsData } = await sb.from('documents')
+      .select('*')
+      .eq('project_id', projectId)
+      .or(`published.eq.true,created_by.eq.${session.user.id}`)
+      .order('updated_at', { ascending: false })
 
     setProject(proj)
     setDocs(docsData || [])
