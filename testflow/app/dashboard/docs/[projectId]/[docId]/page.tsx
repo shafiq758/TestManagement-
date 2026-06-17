@@ -88,7 +88,9 @@ export default function DocEditorPage() {
       memberRole = (memberData?.role || 'viewer') as WorkspaceRole
     }
     setMyRole(memberRole)
-    setMembers((membersData || []).map((m: any) => ({ id: m.user_id, email: m.invited_email, name: m.invited_email?.split('@')[0] })))
+    const mappedMembers = (membersData || []).map((m: any) => ({ id: m.user_id, email: m.invited_email, name: m.invited_email?.split('@')[0] }))
+    console.log('MEMBERS LOADED:', mappedMembers, 'RAW:', membersData)
+    setMembers(mappedMembers)
     const commsData = comms || []
     setComments(commsData)
     // Load replies for all comments
