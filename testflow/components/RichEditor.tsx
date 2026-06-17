@@ -30,8 +30,8 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
   const fileInputRef = useRef<HTMLInputElement>(null)
   const membersRef = useRef<Member[]>([])
 
-  // Keep membersRef always current
-  useEffect(() => { membersRef.current = members }, [members])
+  // Keep membersRef always current — direct assignment during render
+  membersRef.current = members
 
   const editor = useEditor({
     extensions: [
