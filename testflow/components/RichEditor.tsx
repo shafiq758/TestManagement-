@@ -26,6 +26,8 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
   const [uploading, setUploading] = useState(false)
   const [mentionPopup, setMentionPopup] = useState<{query: string; x: number; y: number} | null>(null)
   const [mentionIndex, setMentionIndex] = useState(0)
+  const membersRef = useRef(members)
+  membersRef.current = members // always keep latest
   const [hasSelection, setHasSelection] = useState(false)
   const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -123,7 +125,7 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
   }
 
   const filteredMentionMembers = mentionPopup
-    ? members.filter(m => {
+    ? membersRef.current.filter(m => {
         const q = mentionPopup.query.toLowerCase()
         return !q || (m.name || '').toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
       }).slice(0, 6)
