@@ -26,13 +26,19 @@ export default function DocsListPage() {
     const { data: { session } } = await sb.auth.getSession()
     if (!session) { router.replace('/auth'); return }
 
-    const [{ data: proj }, { data: docsData }, { data: sprs }, { data: mils }, { data: member }] = await Promise.all([
+    const [{ data: proj }, { data: sprs }, { data: mils }, { data: member }] = await Promise.all([
       sb.from('projects').select('*, workspaces(name)').eq('id', projectId).single(),
-      sb.from('documents').select('*').eq('project_id', projectId).order('updated_at', { ascending: false }),
       sb.from('sprints').select('*').eq('project_id', projectId),
       sb.from('milestones').select('*').eq('project_id', projectId),
       sb.from('workspace_members').select('role').eq('user_id', session.user.id).single(),
     ])
+
+    // Fetch all docs then filter: published OR created by current user
+    const { data: allDocs } = await sb.from('documents')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('updated_at', { ascending: false })
+    const docsData = (allDocs || []).filter((d: any) => d.published || d.created_by === session.user.id)
 
     setProject(proj)
     setDocs(docsData || [])
@@ -47,8 +53,10 @@ export default function DocsListPage() {
     setShowTemplateModal(false)
     const { data: { session } } = await sb.auth.getSession()
     const isPrd = template === 'prd'
+    const authorName = session?.user.user_metadata?.name || session?.user.email?.split('@')[0] || 'Unknown'
     const { data: doc } = await sb.from('documents').insert({
       title: isPrd ? 'New PRD' : 'Untitled Document',
+      prd_author: authorName,
       content: isPrd ? {"type": "doc", "content": [{"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Problem Statement"}]}, {"type": "paragraph", "content": [{"type": "text", "text": "Describe the problem this feature or product aims to solve."}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Objectives"}]}, {"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": "Business Goals"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add business goal here"}]}]}]}, {"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": "User Goals"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add user goal here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Target Persona"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add persona here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Solution"}]}, {"type": "paragraph", "content": [{"type": "text", "text": "Describe the proposed solution."}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Requirements"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add requirement here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Success Metrics"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add metric here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Out of Scope"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add out of scope item here"}]}]}]}]} : {},
       doc_type: template,
       project_id: projectId,
