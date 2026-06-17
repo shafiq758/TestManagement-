@@ -67,23 +67,25 @@ export default function DocEditorPage() {
     ])
 
     if (!docData) { router.push(`/dashboard/docs/${projectId}`); return }
-    // Redirect if unpublished and not the author
-    const isDocAuthor = docData.created_by === session.user.id
-    if (!docData.published && !isDocAuthor) {
-      router.push(`/dashboard/docs/${projectId}`)
-      return
-    }
 
     const uid = session.user.id
     setUserId(uid)
     setDoc(docData)
     setDocType(docData.doc_type || 'plain')
-    // Use saved prd_author or current user's display name
+    // Get author display name
     let authorName = docData.prd_author || ''
-    if (!authorName && docData.created_by === session.user.id) {
-      authorName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Unknown'
+    if (!authorName) {
+      if (docData.created_by === session.user.id) {
+        // Current user is author - use their metadata
+        authorName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Unknown'
+        // Save it for future viewers
+        await sb.from('documents').update({ prd_author: authorName }).eq('id', docData.id)
+      } else {
+        // Look up from members list
+        const authorMember = (membersData || []).find((m: any) => m.user_id === docData.created_by)
+        authorName = authorMember?.invited_email?.split('@')[0] || 'Unknown'
+      }
     }
-    if (!authorName) authorName = 'Unknown'
     setPrdMeta({
       category: docData.prd_category || '',
       status: docData.prd_status || 'Draft',
@@ -291,6 +293,12 @@ export default function DocEditorPage() {
   }
 
   const openComments = !comments.filter(c => !c.resolved).length === false
+
+  // Access control - redirect if unpublished and not author
+  if (!loading && doc && !doc.published && !isAuthor) {
+    router.push(`/dashboard/docs/${projectId}`)
+    return null
+  }
 
   if (loading) return (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>Loading…</div>
