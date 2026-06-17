@@ -61,7 +61,12 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
       const { from } = editor.state.selection
       const textBefore = editor.state.doc.textBetween(Math.max(0, from - 30), from)
       const match = textBefore.match(/@(\w*)$/)
-      if (match && membersRef.current.length > 0) {
+      // Use window fallback if membersRef is empty (dynamic import timing issue)
+      const availableMembers = membersRef.current.length > 0
+        ? membersRef.current
+        : (typeof window !== 'undefined' ? (window as any).__testflow_members || [] : [])
+      if (match && availableMembers.length > 0) {
+        membersRef.current = availableMembers // sync ref
         try {
           const coords = editor.view.coordsAtPos(from)
           setMentionPopup({ query: match[1], x: coords.left, y: coords.bottom + 4 })
@@ -75,8 +80,12 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
     return () => { editor.off('update', check) }
   }, [editor, editable])
 
+  const currentMembers = membersRef.current.length > 0
+    ? membersRef.current
+    : (typeof window !== 'undefined' ? (window as any).__testflow_members || [] : [])
+
   const filteredMembers = mentionPopup
-    ? membersRef.current.filter(m => {
+    ? (currentMembers as Member[]).filter((m: Member) => {
         const q = mentionPopup.query.toLowerCase()
         return !q || (m.name || '').toLowerCase().startsWith(q) || m.email.toLowerCase().startsWith(q)
       }).slice(0, 6)
