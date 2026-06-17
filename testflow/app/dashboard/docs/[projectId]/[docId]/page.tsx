@@ -89,8 +89,11 @@ export default function DocEditorPage() {
     }
     setMyRole(memberRole)
     const mappedMembers = (membersData || []).map((m: any) => ({ id: m.user_id, email: m.invited_email, name: m.invited_email?.split('@')[0] }))
-    console.log('MEMBERS LOADED:', mappedMembers, 'RAW:', membersData)
     setMembers(mappedMembers)
+    // Store in window so dynamic RichEditor can always access latest members
+    if (typeof window !== 'undefined') {
+      (window as any).__testflow_members = mappedMembers
+    }
     const commsData = comms || []
     setComments(commsData)
     // Load replies for all comments
