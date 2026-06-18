@@ -95,8 +95,9 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
 
   const filteredMembers = mentionPopup
     ? (currentMembers as Member[]).filter((m: Member) => {
+        if (!m || !m.email) return false
         const q = mentionPopup.query.toLowerCase()
-        return !q || (m.name || '').toLowerCase().startsWith(q) || m.email.toLowerCase().startsWith(q)
+        return !q || (m.name || '').toLowerCase().startsWith(q) || (m.email || '').toLowerCase().startsWith(q)
       }).slice(0, 6)
     : []
 
