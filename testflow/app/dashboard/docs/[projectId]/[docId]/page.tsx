@@ -63,7 +63,7 @@ export default function DocEditorPage() {
       sb.from('milestones').select('*').eq('project_id', projectId),
       sb.from('projects').select('workspace_id').eq('id', projectId).single(),
       sb.from('document_comments').select('*').eq('document_id', docId).order('created_at'),
-      sb.from('workspace_members').select('user_id, role, invited_email, display_name').eq('workspace_id', (await sb.from('projects').select('workspace_id').eq('id', projectId).single()).data?.workspace_id || ''),
+      sb.from('project_members').select('user_id, role').eq('project_id', projectId),
     ])
 
     if (!docData) { router.push(`/dashboard/docs/${projectId}`); return }
@@ -81,9 +81,9 @@ export default function DocEditorPage() {
         // Save it for future viewers
         await sb.from('documents').update({ prd_author: authorName }).eq('id', docData.id)
       } else {
-        // Look up author from members list using display_name
-        const authorMember = (membersData || []).find((m: any) => m.user_id === docData.created_by)
-        authorName = authorMember?.display_name || authorMember?.invited_email || 'Unknown'
+        // Look up author from workspace_members directly
+        const { data: authorWm } = await sb.from('workspace_members').select('invited_email, display_name').eq('user_id', docData.created_by).single()
+        authorName = (authorWm as any)?.display_name || (authorWm as any)?.invited_email || 'Unknown'
       }
     }
     setPrdMeta({
