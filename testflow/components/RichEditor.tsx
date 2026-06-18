@@ -76,8 +76,17 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
         setMentionPopup(null)
       }
     }
+    const handleMouseDown = (e: MouseEvent) => {
+      const popup = document.getElementById('mention-popup')
+      if (popup && popup.contains(e.target as Node)) return
+      setMentionPopup(null)
+    }
     editor.on('update', check)
-    return () => { editor.off('update', check) }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => {
+      editor.off('update', check)
+      document.removeEventListener('mousedown', handleMouseDown)
+    }
   }, [editor, editable])
 
   const currentMembers = membersRef.current.length > 0

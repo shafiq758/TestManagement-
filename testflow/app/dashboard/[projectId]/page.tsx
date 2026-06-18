@@ -8,6 +8,7 @@ import SprintsTab from '@/components/SprintsTab'
 import BugsTab from '@/components/BugsTab'
 import AttachmentUploader, { type Attachment } from '@/components/AttachmentUploader'
 import ImportExportModal from '@/components/ImportExportModal'
+import ProjectMembersTab from '@/components/ProjectMembersTab'
 import type { Bug } from '@/types'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
@@ -164,7 +165,8 @@ export default function ProjectPage() {
   const [sections, setSections] = useState<Section[]>([])
   const [cases, setCases] = useState<TestCase[]>([])
   const [runs, setRuns] = useState<TestRun[]>([])
-  const [tab, setTab] = useState<'cases' | 'runs' | 'sprints' | 'milestones' | 'bugs'>('cases')
+  const [projectMembers, setProjectMembers] = useState<any[]>([])
+  const [tab, setTab] = useState<'cases' | 'runs' | 'sprints' | 'milestones' | 'bugs' | 'members'>('cases')
   const [loading, setLoading] = useState(true)
   const [myRole, setMyRole] = useState<WorkspaceRole>('viewer')
   const [milestones, setMilestones] = useState<any[]>([])
@@ -225,7 +227,7 @@ export default function ProjectPage() {
       <div style={{ padding: '18px 26px 0', borderBottom: '1px solid #e5e7eb' }}>
         <h1 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 600 }}>{project.name}</h1>
         <div style={{ display: 'flex', gap: 0 }}>
-          {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones'], ['bugs', 'Bugs']] as const).map(([t, label]) => (
+          {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones'], ['bugs', 'Bugs'], ['members', 'Members']] as const).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t as any)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
               fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 600 : 400,
@@ -265,6 +267,15 @@ export default function ProjectPage() {
           <MilestonesTab milestones={milestones} projectId={projectId}
             canEdit={canEditCases(myRole)} onRefresh={load} onViewMilestone={(m) => pushNav('milestone', m)} />
         )}
+        {tab === 'members' && (
+          <ProjectMembersTab
+            projectId={projectId}
+            workspaceId={project?.workspace_id || ''}
+            myRole={myRole}
+            isAdmin={myRole === 'admin'}
+          />
+        )}
+
         {tab === 'bugs' && (
           <BugsTab bugs={bugs} projectId={projectId} sprints={sprints}
             testRuns={runs} testCases={cases}

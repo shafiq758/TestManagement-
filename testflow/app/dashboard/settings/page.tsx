@@ -52,6 +52,10 @@ export default function SettingsPage() {
     const { error: e } = await sb.auth.updateUser({
       data: { name: displayName.trim() }
     })
+    // Also save to workspace_members so other users can see display name
+    if (!e) {
+      await sb.from('workspace_members').update({ display_name: displayName.trim() }).eq('user_id', user?.id)
+    }
     if (e) { setNameError(e.message); setNameLoading(false); return }
     setUser((p: any) => ({ ...p, user_metadata: { ...p.user_metadata, name: displayName.trim() } }))
     setNameSuccess('Name updated successfully.')

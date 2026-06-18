@@ -72,8 +72,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const fetchProjects = async (sb: any, wsId: string) => {
-    const { data } = await sb.from('projects').select('*').eq('workspace_id', wsId).order('created_at')
-    setProjects(data || [])
+    const { data: { session } } = await sb.auth.getSession()
+    const { data: memberData } = await sb.from('workspace_members').select('role, user_id').eq('user_id', session?.user.id || '').eq('workspace_id', wsId).single()
+    
+    let projectData
+    if (memberData?.role === 'admin') {
+      // Admins see all projects
+      const { data } = await sb.from('projects').select('*').eq('workspace_id', wsId).order('created_at')
+      projectData = data
+    } else {
+      // Others only see projects they're added to
+      const { data: pm } = await sb.from('project_members').select('project_id').eq('user_id', session?.user.id || '')
+      const projectIds = (pm || []).map((p: any) => p.project_id)
+      if (projectIds.length > 0) {
+        const { data } = await sb.from('projects').select('*').eq('workspace_id', wsId).in('id', projectIds).order('created_at')
+        projectData = data
+      } else {
+        projectData = []
+      }
+    }
+    setProjects(projectData || [])
   }
 
   const createProject = async () => {

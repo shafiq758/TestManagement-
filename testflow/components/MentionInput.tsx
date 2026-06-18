@@ -98,7 +98,7 @@ export default function MentionInput({ value, onChange, onKeyDown, members, plac
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+        onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
         placeholder={placeholder}
         rows={rows}
         style={{
