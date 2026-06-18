@@ -50,27 +50,41 @@ export default function ProjectMembersTab({ projectId, workspaceId, myRole, isAd
     if (!selectedUserId) return
     setAdding(true)
     const { data: { session } } = await sb.auth.getSession()
-    await sb.from('project_members').insert({
-      project_id: projectId,
-      user_id: selectedUserId,
-      role: selectedRole,
-      invited_by: session?.user.id,
+    const res = await fetch('/api/project-members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ project_id: projectId, user_id: selectedUserId, role: selectedRole, invited_by: session?.user.id }),
     })
-    setShowAddModal(false)
-    setSelectedUserId('')
-    setSelectedRole('viewer')
-    await load()
+    if (res.ok) {
+      setShowAddModal(false)
+      setSelectedUserId('')
+      setSelectedRole('viewer')
+      await load()
+    } else {
+      const err = await res.json()
+      alert('Error: ' + err.error)
+    }
     setAdding(false)
   }
 
   const updateRole = async (memberId: string, role: string) => {
-    await sb.from('project_members').update({ role }).eq('id', memberId)
+    const { data: { session } } = await sb.auth.getSession()
+    await fetch('/api/project-members', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ id: memberId, role, project_id: projectId }),
+    })
     setMembers(p => p.map(m => m.id === memberId ? { ...m, role } : m))
   }
 
   const removeMember = async (memberId: string) => {
     if (!confirm('Remove this member from the project?')) return
-    await sb.from('project_members').delete().eq('id', memberId)
+    const { data: { session } } = await sb.auth.getSession()
+    await fetch('/api/project-members', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ id: memberId, project_id: projectId }),
+    })
     setMembers(p => p.filter(m => m.id !== memberId))
   }
 
