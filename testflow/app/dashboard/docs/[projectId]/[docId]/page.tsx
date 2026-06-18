@@ -63,7 +63,7 @@ export default function DocEditorPage() {
       sb.from('milestones').select('*').eq('project_id', projectId),
       sb.from('projects').select('workspace_id').eq('id', projectId).single(),
       sb.from('document_comments').select('*').eq('document_id', docId).order('created_at'),
-      sb.from('workspace_members').select('user_id, role, invited_email').eq('workspace_id', (await sb.from('projects').select('workspace_id').eq('id', projectId).single()).data?.workspace_id || ''),
+      sb.from('workspace_members').select('user_id, role, invited_email, display_name').eq('workspace_id', (await sb.from('projects').select('workspace_id').eq('id', projectId).single()).data?.workspace_id || ''),
     ])
 
     if (!docData) { router.push(`/dashboard/docs/${projectId}`); return }
@@ -81,9 +81,9 @@ export default function DocEditorPage() {
         // Save it for future viewers
         await sb.from('documents').update({ prd_author: authorName }).eq('id', docData.id)
       } else {
-        // Look up from members list
+        // Look up author from members list using display_name
         const authorMember = (membersData || []).find((m: any) => m.user_id === docData.created_by)
-        authorName = authorMember?.invited_email?.split('@')[0] || 'Unknown'
+        authorName = authorMember?.display_name || authorMember?.invited_email || 'Unknown'
       }
     }
     setPrdMeta({
@@ -507,10 +507,16 @@ export default function DocEditorPage() {
                         rows={1}
                       />
                     </div>
-                    <button onClick={() => submitReply(comment.id)}
-                      style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
-                      Send
-                    </button>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button onClick={() => { setShowReplyInput(p => ({ ...p, [comment.id]: false })); setReplyText(p => ({ ...p, [comment.id]: '' })) }}
+                        style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', background: '#fff', color: '#6b7280' }}>
+                        Cancel
+                      </button>
+                      <button onClick={() => submitReply(comment.id)}
+                        style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
+                        Send
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
