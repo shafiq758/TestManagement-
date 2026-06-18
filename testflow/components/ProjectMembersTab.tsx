@@ -29,14 +29,15 @@ export default function ProjectMembersTab({ projectId, workspaceId, myRole, isAd
 
   const load = async () => {
     const [{ data: pm }, { data: wm }] = await Promise.all([
-      sb.from('project_members')
-        .select('*, workspace_members(invited_email, display_name)')
-        .eq('project_id', projectId),
-      sb.from('workspace_members')
-        .select('user_id, invited_email, display_name, role')
-        .eq('workspace_id', workspaceId),
+      sb.from('project_members').select('*').eq('project_id', projectId),
+      sb.from('workspace_members').select('user_id, invited_email, display_name, role').eq('workspace_id', workspaceId),
     ])
-    setMembers(pm || [])
+    // Enrich project members with workspace member info
+    const enriched = (pm || []).map((m: any) => ({
+      ...m,
+      workspace_members: (wm || []).find((w: any) => w.user_id === m.user_id) || {}
+    }))
+    setMembers(enriched)
     setWsMembers(wm || [])
     setLoading(false)
   }
