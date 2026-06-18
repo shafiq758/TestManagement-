@@ -214,7 +214,7 @@ export default function RichEditor({ content, onChange, onHighlightComment, edit
 
       {/* @mention popup */}
       {mentionPopup && filteredMembers.length > 0 && (
-        <div style={{
+        <div id="mention-popup" style={{
           position: 'fixed', left: mentionPopup.x, top: mentionPopup.y,
           background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
           boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 9999, minWidth: 200, overflow: 'hidden',
