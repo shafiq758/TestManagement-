@@ -25,8 +25,9 @@ export default function MentionInput({ value, onChange, onKeyDown, members, plac
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const filteredMembers = members.filter(m => {
+    if (!m || !m.email) return false
     const q = mentionQuery.toLowerCase()
-    return (m.name || '').toLowerCase().includes(q) || m.email.toLowerCase().includes(q)
+    return (m.name || '').toLowerCase().includes(q) || (m.email || '').toLowerCase().includes(q)
   }).slice(0, 6)
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
