@@ -112,11 +112,21 @@ export default function DocEditorPage() {
       memberRole = (memberData?.role || 'viewer') as WorkspaceRole
     }
     setMyRole(memberRole)
-    const mappedMembers = (membersData || []).map((m: any) => ({ id: m.user_id, email: m.invited_email, name: m.invited_email?.split('@')[0] }))
-    setMembers(mappedMembers)
-    // Store in window so dynamic RichEditor can always access latest members
+    // Fetch workspace members to get emails/names for project members
+    const pmUserIds = (membersData || []).map((m: any) => m.user_id)
+    let enrichedMembers: any[] = []
+    if (pmUserIds.length > 0) {
+      const { data: wmData } = await sb.from('workspace_members')
+        .select('user_id, invited_email, display_name')
+        .in('user_id', pmUserIds)
+      enrichedMembers = (membersData || []).map((m: any) => {
+        const wm = (wmData || []).find((w: any) => w.user_id === m.user_id)
+        return { id: m.user_id, email: wm?.invited_email || '', name: wm?.display_name || wm?.invited_email?.split('@')[0] || '' }
+      }).filter((m: any) => m.email)
+    }
+    setMembers(enrichedMembers)
     if (typeof window !== 'undefined') {
-      (window as any).__testflow_members = mappedMembers
+      (window as any).__testflow_members = enrichedMembers
     }
     const commsData = comms || []
     setComments(commsData)
