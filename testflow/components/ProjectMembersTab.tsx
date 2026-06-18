@@ -34,8 +34,7 @@ export default function ProjectMembersTab({ projectId, workspaceId, myRole, isAd
         .eq('project_id', projectId),
       sb.from('workspace_members')
         .select('user_id, invited_email, display_name, role')
-        .eq('workspace_id', workspaceId)
-        .eq('status', 'active'),
+        .eq('workspace_id', workspaceId),
     ])
     setMembers(pm || [])
     setWsMembers(wm || [])
