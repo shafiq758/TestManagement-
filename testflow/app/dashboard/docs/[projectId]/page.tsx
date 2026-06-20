@@ -135,7 +135,7 @@ export default function DocsListPage() {
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)'}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.boxShadow = 'none'}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.4, flex: 1, paddingRight: 8 }}>{doc.title}</h3>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.4, flex: 1, paddingRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 'calc(100% - 24px)' }}>{doc.title}</h3>
                     {canEdit && (
                       <button onClick={(e) => deleteDoc(doc.id, e)}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 16, padding: '0 2px', flexShrink: 0 }}
