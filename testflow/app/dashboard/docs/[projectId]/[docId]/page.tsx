@@ -220,6 +220,67 @@ export default function DocEditorPage() {
   }
 
   // Save version manually
+  const importFile = async (file: File) => {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    try {
+      if (ext === 'txt') {
+        // Plain text - convert to paragraphs
+        const text = await file.text()
+        const paragraphs = text.split('\n').map((line: string) => ({
+          type: 'paragraph',
+          content: line.trim() ? [{ type: 'text', text: line }] : []
+        }))
+        const newContent = { type: 'doc', content: paragraphs }
+        setContent(newContent)
+        autoSave(title, newContent, selectedSprintId, selectedMilestoneId)
+
+      } else if (ext === 'docx' || ext === 'doc') {
+        // Word document - use mammoth
+        const { default: mammoth } = await import('mammoth')
+        const arrayBuffer = await file.arrayBuffer()
+        const result = await mammoth.extractRawText({ arrayBuffer })
+        const lines = result.value.split('\n').filter((l: string) => l.trim())
+        const paragraphs = lines.map((line: string) => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: line }]
+        }))
+        const newContent = { type: 'doc', content: paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph' }] }
+        setContent(newContent)
+        autoSave(title, newContent, selectedSprintId, selectedMilestoneId)
+        // Also update title from filename
+        const newTitle = file.name.replace(/\.docx?$/i, '')
+        setTitle(newTitle)
+        autoSave(newTitle, newContent, selectedSprintId, selectedMilestoneId)
+
+      } else if (ext === 'pdf') {
+        // PDF - extract text
+        alert('PDF import extracts text only. For best results use .docx or .txt files.')
+        const pdfjsLib = await import('pdfjs-dist')
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+        const arrayBuffer = await file.arrayBuffer()
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+        let fullText = ''
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i)
+          const textContent = await page.getTextContent()
+          const pageText = textContent.items.map((item: any) => item.str).join(' ')
+          fullText += pageText + '\n'
+        }
+        const lines = fullText.split('\n').filter((l: string) => l.trim())
+        const paragraphs = lines.map((line: string) => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: line }]
+        }))
+        const newContent = { type: 'doc', content: paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph' }] }
+        setContent(newContent)
+        autoSave(title, newContent, selectedSprintId, selectedMilestoneId)
+      }
+    } catch (err) {
+      console.error('Import failed:', err)
+      alert('Failed to import file. Please try a .txt or .docx file.')
+    }
+  }
+
   const publishDoc = async (vis: string, ca: string, pub: boolean) => {
     const { data: { session } } = await sb.auth.getSession()
     // Save author display name at publish time so others can see it
@@ -359,6 +420,17 @@ export default function DocEditorPage() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             {isAuthor && (
             <>
+              {/* Import file button */}
+              <label style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 12, background: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                📥 Import file
+                <input type="file" accept=".docx,.doc,.txt,.pdf" style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    await importFile(file)
+                    e.target.value = ''
+                  }} />
+              </label>
               <button onClick={saveVersion} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
                 📌 Save version
               </button>
