@@ -48,6 +48,7 @@ export default function DocEditorPage() {
   const [replyText, setReplyText] = useState<Record<string, string>>({})
   const [showReplyInput, setShowReplyInput] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
+  const [editorKey, setEditorKey] = useState(0)
   const [attachments, setAttachments] = useState<any[]>([])
   const [uploadingFile, setUploadingFile] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -223,38 +224,50 @@ export default function DocEditorPage() {
   const importFile = async (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase()
     try {
+      let paragraphs: any[] = []
+      let newTitle = title
+
       if (ext === 'txt') {
-        // Plain text - convert to paragraphs
         const text = await file.text()
-        const paragraphs = text.split('\n').map((line: string) => ({
+        const lines = text.split('\n')
+        paragraphs = lines.map((line: string) => ({
           type: 'paragraph',
-          content: line.trim() ? [{ type: 'text', text: line }] : []
+          attrs: { textAlign: null },
+          content: line.trim() ? [{ type: 'text', text: line }] : undefined
         }))
-        const newContent = { type: 'doc', content: paragraphs }
-        setContent(newContent)
-        autoSave(title, newContent, selectedSprintId, selectedMilestoneId)
 
       } else if (ext === 'docx' || ext === 'doc') {
-        // Word document - use mammoth
         const { default: mammoth } = await import('mammoth')
         const arrayBuffer = await file.arrayBuffer()
-        const result = await mammoth.extractRawText({ arrayBuffer })
-        const lines = result.value.split('\n').filter((l: string) => l.trim())
-        const paragraphs = lines.map((line: string) => ({
-          type: 'paragraph',
-          content: [{ type: 'text', text: line }]
-        }))
-        const newContent = { type: 'doc', content: paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph' }] }
-        setContent(newContent)
-        autoSave(title, newContent, selectedSprintId, selectedMilestoneId)
-        // Also update title from filename
-        const newTitle = file.name.replace(/\.docx?$/i, '')
-        setTitle(newTitle)
-        autoSave(newTitle, newContent, selectedSprintId, selectedMilestoneId)
+        const result = await mammoth.convertToHtml({ arrayBuffer })
+        // Parse HTML to extract structured content
+        const div = document.createElement('div')
+        div.innerHTML = result.value
+        paragraphs = []
+        div.childNodes.forEach((node: any) => {
+          if (node.nodeType === 1) {
+            const tag = node.tagName?.toLowerCase()
+            const text = node.textContent?.trim()
+            if (!text) return
+            if (tag === 'h1') paragraphs.push({ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text }] })
+            else if (tag === 'h2') paragraphs.push({ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text }] })
+            else if (tag === 'h3') paragraphs.push({ type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text }] })
+            else if (tag === 'ul') {
+              node.querySelectorAll('li').forEach((li: any) => {
+                paragraphs.push({ type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: li.textContent?.trim() }] }] }] })
+              })
+            } else if (tag === 'ol') {
+              node.querySelectorAll('li').forEach((li: any) => {
+                paragraphs.push({ type: 'orderedList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: li.textContent?.trim() }] }] }] })
+              })
+            } else {
+              paragraphs.push({ type: 'paragraph', attrs: { textAlign: null }, content: [{ type: 'text', text }] })
+            }
+          }
+        })
+        newTitle = file.name.replace(/\.docx?$/i, '')
 
       } else if (ext === 'pdf') {
-        // PDF - extract text
-        alert('PDF import extracts text only. For best results use .docx or .txt files.')
         const pdfjsLib = await import('pdfjs-dist')
         pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
         const arrayBuffer = await file.arrayBuffer()
@@ -263,21 +276,40 @@ export default function DocEditorPage() {
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i)
           const textContent = await page.getTextContent()
-          const pageText = textContent.items.map((item: any) => item.str).join(' ')
-          fullText += pageText + '\n'
+          let lastY = -1
+          textContent.items.forEach((item: any) => {
+            if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) fullText += '\n'
+            fullText += item.str
+            lastY = item.transform[5]
+          })
+          fullText += '\n'
         }
-        const lines = fullText.split('\n').filter((l: string) => l.trim())
-        const paragraphs = lines.map((line: string) => ({
+        const lines = fullText.split('\n')
+        paragraphs = lines.map((line: string) => ({
           type: 'paragraph',
-          content: [{ type: 'text', text: line }]
+          attrs: { textAlign: null },
+          content: line.trim() ? [{ type: 'text', text: line.trim() }] : undefined
         }))
-        const newContent = { type: 'doc', content: paragraphs.length > 0 ? paragraphs : [{ type: 'paragraph' }] }
-        setContent(newContent)
-        autoSave(title, newContent, selectedSprintId, selectedMilestoneId)
+        newTitle = file.name.replace(/\.pdf$/i, '')
+      } else {
+        alert('Supported formats: .txt, .docx, .pdf')
+        return
       }
+
+      if (paragraphs.length === 0) {
+        alert('No content found in file.')
+        return
+      }
+
+      const newContent = { type: 'doc', content: paragraphs }
+      setTitle(newTitle)
+      setContent(newContent)
+      setEditorKey(k => k + 1) // Force editor remount with new content
+      autoSave(newTitle, newContent, selectedSprintId, selectedMilestoneId)
+
     } catch (err) {
       console.error('Import failed:', err)
-      alert('Failed to import file. Please try a .txt or .docx file.')
+      alert('Import failed. Please try again.')
     }
   }
 
@@ -595,7 +627,7 @@ export default function DocEditorPage() {
 
           {/* Editor */}
           <RichEditor
-            key={`editor-${canComment}-${canEdit}`}
+            key={`editor-${canComment}-${canEdit}-${editorKey}`}
             content={content}
             onChange={handleContentChange}
             onHighlightComment={canComment ? handleHighlightComment : undefined}
