@@ -18,6 +18,7 @@ export default function DocsListPage() {
   const [creating, setCreating] = useState(false)
   const [search, setSearch] = useState('')
   const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [newDocName, setNewDocName] = useState('')
   const sb = createClient()
 
   useEffect(() => { load() }, [projectId])
@@ -54,8 +55,9 @@ export default function DocsListPage() {
     const { data: { session } } = await sb.auth.getSession()
     const isPrd = template === 'prd'
     const authorName = session?.user.user_metadata?.name || session?.user.email?.split('@')[0] || 'Unknown'
+    const docTitle = newDocName.trim() || (isPrd ? 'New PRD' : 'Untitled Document')
     const { data: doc } = await sb.from('documents').insert({
-      title: isPrd ? 'New PRD' : 'Untitled Document',
+      title: docTitle,
       prd_author: authorName,
       content: isPrd ? {"type": "doc", "content": [{"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Problem Statement"}]}, {"type": "paragraph", "content": [{"type": "text", "text": "Describe the problem this feature or product aims to solve."}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Objectives"}]}, {"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": "Business Goals"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add business goal here"}]}]}]}, {"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": "User Goals"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add user goal here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Target Persona"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add persona here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Solution"}]}, {"type": "paragraph", "content": [{"type": "text", "text": "Describe the proposed solution."}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Requirements"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add requirement here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Success Metrics"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add metric here"}]}]}]}, {"type": "heading", "attrs": {"level": 2}, "content": [{"type": "text", "text": "Out of Scope"}]}, {"type": "bulletList", "content": [{"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Add out of scope item here"}]}]}]}]} : {},
       doc_type: template,
@@ -168,9 +170,21 @@ export default function DocsListPage() {
           <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 500, padding: 28, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
             <h2 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 600 }}>Choose a template</h2>
             <p style={{ margin: '0 0 24px', fontSize: 13, color: '#6b7280' }}>Start with a blank document or a pre-structured PRD.</p>
+            {/* Name input */}
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>Document name *</label>
+              <input
+                value={newDocName}
+                onChange={e => setNewDocName(e.target.value)}
+                placeholder="e.g. Login Feature PRD"
+                autoFocus
+                style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 12px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const }}
+              />
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
               {/* Plain doc */}
-              <div onClick={() => createDoc('plain')}
+              <div onClick={() => { if (newDocName.trim()) createDoc('plain') }}
                 style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, cursor: 'pointer', transition: 'all 0.15s' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#111'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
@@ -179,7 +193,7 @@ export default function DocsListPage() {
                 <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Start with a blank canvas. No structure imposed.</p>
               </div>
               {/* PRD */}
-              <div onClick={() => createDoc('prd')}
+              <div onClick={() => { if (newDocName.trim()) createDoc('prd') }}
                 style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 20, cursor: 'pointer', transition: 'all 0.15s' }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#7c3aed'; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 12px rgba(124,58,237,0.1)' }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}>
@@ -188,7 +202,7 @@ export default function DocsListPage() {
                 <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>Product Requirements Document with structured sections and metadata.</p>
               </div>
             </div>
-            <button onClick={() => setShowTemplateModal(false)}
+            <button onClick={() => { setShowTemplateModal(false); setNewDocName('') }}
               style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: 8, padding: '9px 0', fontSize: 13, background: '#fff', cursor: 'pointer', color: '#6b7280' }}>
               Cancel
             </button>

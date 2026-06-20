@@ -48,6 +48,8 @@ export default function DocEditorPage() {
   const [replyText, setReplyText] = useState<Record<string, string>>({})
   const [showReplyInput, setShowReplyInput] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
+  const [attachments, setAttachments] = useState<any[]>([])
+  const [uploadingFile, setUploadingFile] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const sb = createClient()
 
@@ -130,6 +132,9 @@ export default function DocEditorPage() {
     }
     const commsData = comms || []
     setComments(commsData)
+    // Load attachments
+    const { data: attachData } = await sb.storage.from('attachments').list(`docs/${docId}`)
+    setAttachments(attachData || [])
     // Load replies for all comments
     if (commsData.length > 0) {
       const { data: repliesData } = await sb.from('document_comment_replies')
@@ -279,6 +284,23 @@ export default function DocEditorPage() {
     if (newComment) setComments(p => [...p, newComment])
     setShowCommentModal(false)
     setPendingComment(null)
+  }
+
+  const uploadAttachment = async (file: File) => {
+    setUploadingFile(true)
+    const path = `docs/${docId}/${Date.now()}_${file.name}`
+    const { error } = await sb.storage.from('attachments').upload(path, file)
+    if (!error) {
+      const { data: { publicUrl } } = sb.storage.from('attachments').getPublicUrl(path)
+      setAttachments(p => [...p, { name: file.name, url: publicUrl, path, size: file.size, type: file.type }])
+    }
+    setUploadingFile(false)
+  }
+
+  const deleteAttachment = async (path: string) => {
+    if (!confirm('Delete this attachment?')) return
+    await sb.storage.from('attachments').remove([path])
+    setAttachments(p => p.filter((a: any) => a.name !== path.split('/').pop()))
   }
 
   const submitReply = async (commentId: string) => {
@@ -439,6 +461,49 @@ export default function DocEditorPage() {
                   {!published && !isAuthor ? '🔒 Not published' : commentAccess === 'none' ? '💬 Comments off' : '👁 View only'}
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* Attachments section */}
+          <div style={{ marginTop: 24, borderTop: '1px solid #e5e7eb', paddingTop: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151' }}>📎 Attachments ({attachments.length})</p>
+              {canEdit && (
+                <label style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
+                  {uploadingFile ? 'Uploading…' : '+ Upload file'}
+                  <input type="file" style={{ display: 'none' }} disabled={uploadingFile}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadAttachment(f); e.target.value = '' }} />
+                </label>
+              )}
+            </div>
+            {attachments.length === 0 && (
+              <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No attachments yet.</p>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {attachments.map((att: any, i: number) => {
+                const isImage = att.metadata?.mimetype?.startsWith('image/') || att.name?.match(/\.(png|jpg|jpeg|gif|webp)$/i)
+                const isPdf = att.name?.match(/\.pdf$/i)
+                const icon = isImage ? '🖼' : isPdf ? '📄' : '📎'
+                const url = att.url || sb.storage.from('attachments').getPublicUrl(`docs/${docId}/${att.name}`).data.publicUrl
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+                    <span style={{ fontSize: 18 }}>{icon}</span>
+                    <a href={url} target="_blank" rel="noreferrer"
+                      style={{ flex: 1, fontSize: 13, color: '#2563eb', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {att.name}
+                    </a>
+                    {att.metadata?.size && (
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>{(att.metadata.size / 1024).toFixed(0)}KB</span>
+                    )}
+                    {canEdit && (
+                      <button onClick={() => deleteAttachment(`docs/${docId}/${att.name}`)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 16, padding: 0, flexShrink: 0 }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#dc2626'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#d1d5db'}>✕</button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
 
