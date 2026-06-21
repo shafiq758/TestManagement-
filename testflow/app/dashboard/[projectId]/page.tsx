@@ -474,6 +474,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
 
       {addingCaseTo && (
         <CaseModal title="Add test case" projectId={projectId} sectionId={addingCaseTo}
+          mentionMembers={typeof window !== 'undefined' ? (window as any).__testflow_members || [] : []}
           onSave={() => { setAddingCaseTo(null); onRefresh() }} onClose={() => setAddingCaseTo(null)} />
       )}
       {showImportExport && (
@@ -485,6 +486,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
       {editingCase && (
         <CaseModal title="Edit test case" projectId={projectId} sectionId={editingCase.section_id}
           initial={editingCase}
+          mentionMembers={typeof window !== 'undefined' ? (window as any).__testflow_members || [] : []}
           onSave={() => { setEditingCase(null); onRefresh() }} onClose={() => setEditingCase(null)} />
       )}
 
