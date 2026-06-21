@@ -16,6 +16,11 @@ export default function InlineComments({ entityId, entityType, mentionMembers = 
   const [submitting, setSubmitting] = useState(false)
   const sb = createClient()
 
+  // Use window fallback for members if prop is empty
+  const members = mentionMembers.length > 0
+    ? mentionMembers
+    : (typeof window !== 'undefined' ? (window as any).__testflow_members || [] : [])
+
   const table = entityType === 'test_case' ? 'test_case_comments' : 'bug_comments'
   const fkCol = entityType === 'test_case' ? 'test_case_id' : 'bug_id'
 
@@ -88,7 +93,7 @@ export default function InlineComments({ entityId, entityType, mentionMembers = 
         <MentionInput
           value={newComment}
           onChange={setNewComment}
-          members={mentionMembers}
+          members={members}
           placeholder="Add a comment… type @ to mention"
           rows={2}
           onKeyDown={(e) => {
