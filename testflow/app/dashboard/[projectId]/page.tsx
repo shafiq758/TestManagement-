@@ -194,6 +194,18 @@ export default function ProjectPage() {
     const { data: { session } } = await sb.auth.getSession()
     if (session) {
       const { data: mem } = await sb.from('workspace_members').select('role').eq('user_id', session.user.id).eq('status', 'active').single()
+      // Load all workspace members for @mention
+      const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+      if (proj) {
+        const { data: allMembers } = await sb.from('workspace_members')
+          .select('user_id, invited_email, display_name')
+          .eq('workspace_id', proj.workspace_id)
+        setMentionMembers((allMembers || []).map((m: any) => ({
+          id: m.user_id,
+          email: m.invited_email,
+          name: m.display_name || m.invited_email?.split('@')[0]
+        })))
+      }
       if (mem) setMyRole(mem.role)
     }
     const [{ data: proj }, { data: secs }, { data: tcs }, { data: trs }, { data: mils }, { data: sprs }, { data: plans }, { data: bugsData }] = await Promise.all([
@@ -281,7 +293,7 @@ export default function ProjectPage() {
         {tab === 'bugs' && (
           <BugsTab bugs={bugs} projectId={projectId} sprints={sprints}
             testRuns={runs} testCases={cases}
-            canEdit={canEditCases(myRole)} onRefresh={load} onViewBug={(b) => pushNav("bug", b)} />
+            canEdit={canEditCases(myRole)} onRefresh={load} onViewBug={(b) => pushNav("bug", b)} members={mentionMembers} />
         )}
       </div>
 
