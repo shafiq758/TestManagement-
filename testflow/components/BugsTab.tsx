@@ -260,9 +260,13 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
           </Field>
 
           <Field label="Description">
-            <textarea value={form.description} onChange={e => set('description', e.target.value)}
-              placeholder="What went wrong?" rows={3}
-              style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
+            <MentionInput
+              value={form.description}
+              onChange={val => set('description', val)}
+              members={members}
+              placeholder="What went wrong? Type @ to mention someone"
+              rows={3}
+            />
           </Field>
           <Field label="Steps to reproduce">
             <textarea value={form.steps} onChange={e => set('steps', e.target.value)}
