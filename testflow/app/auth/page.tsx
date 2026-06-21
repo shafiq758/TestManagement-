@@ -130,16 +130,11 @@ export default function AuthPage() {
     setLoading(true)
 
     // Temporary bypass - remove after Google account restored
-const bypassEmails = ['shafiq@loopvoice.ai', 'shafiq+1@loopvoice.ai']
-if (bypassEmails.includes(email.trim().toLowerCase()) && code === '000000') {
-  const { error: signInError } = await sb.auth.signInWithPassword({
-    email: email.trim().toLowerCase(),
-    password: password
-  })
-  if (!signInError) { router.replace('/dashboard'); return }
-  router.replace('/dashboard')
-  return
-}
+    const bypassEmails = ['shafiq@loopvoice.ai', 'shafiq+1@loopvoice.ai']
+    if (bypassEmails.includes(email.trim().toLowerCase()) && code === '000000') {
+      router.replace('/dashboard')
+      return
+    }
 
     const { error: e } = await sb.auth.verifyOtp({
       email: email.trim().toLowerCase(), token: code, type: 'email'
@@ -259,17 +254,14 @@ if (bypassEmails.includes(email.trim().toLowerCase()) && code === '000000') {
     const code = otp.join('')
     if (code.length !== 6) { setError('Please enter the full 6-digit code.'); return }
     setLoading(true)
-// Temporary bypass - remove after Google account restored
-const bypassEmails = ['shafiq@loopvoice.ai', 'shafiq+1@loopvoice.ai']
-if (bypassEmails.includes(email.trim().toLowerCase()) && code === '000000') {
-  const { error: signInError } = await sb.auth.signInWithPassword({
-    email: email.trim().toLowerCase(),
-    password: password
-  })
-  if (!signInError) { router.replace('/dashboard'); return }
-  router.replace('/dashboard')
-  return
-}
+
+    // Temporary bypass - remove after Google account restored
+    const bypassEmails = ['shafiq@loopvoice.ai', 'shafiq+1@loopvoice.ai']
+    if (bypassEmails.includes(email.trim().toLowerCase()) && code === '000000') {
+      router.replace('/dashboard')
+      return
+    }
+
     const { error: e } = await sb.auth.verifyOtp({
       email: email.trim().toLowerCase(), token: code, type: 'email'
     })
@@ -325,6 +317,13 @@ if (bypassEmails.includes(email.trim().toLowerCase()) && code === '000000') {
       email: email.trim().toLowerCase(), password
     })
     if (signInErr) { setError('Session expired. Please sign in again.'); setMode('login'); setLoading(false); return }
+
+    // Temporary bypass - remove after Google account restored
+    const bypassEmails = ['shafiq@loopvoice.ai', 'shafiq+1@loopvoice.ai']
+    if (bypassEmails.includes(email.trim().toLowerCase()) && code === '000000') {
+      router.replace('/dashboard')
+      return
+    }
 
     const { error: e } = await sb.auth.verifyOtp({
       email: email.trim().toLowerCase(), token: code, type: 'email'
