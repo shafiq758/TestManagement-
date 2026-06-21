@@ -51,6 +51,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     if (membership?.workspaces) {
       setWorkspace(membership.workspaces)
       setMyRole(membership.role)
+      setCurrentUserId(u.id)
       fetchProjects(sb, membership.workspaces.id)
       // Also claim any pending invites by email
       await claimPendingInvite(sb, u)
