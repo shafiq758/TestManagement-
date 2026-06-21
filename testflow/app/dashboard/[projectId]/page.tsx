@@ -9,6 +9,7 @@ import BugsTab from '@/components/BugsTab'
 import AttachmentUploader, { type Attachment } from '@/components/AttachmentUploader'
 import ImportExportModal from '@/components/ImportExportModal'
 import MentionInput from '@/components/MentionInput'
+import InlineComments from '@/components/InlineComments'
 import ProjectMembersTab from '@/components/ProjectMembersTab'
 import type { Bug } from '@/types'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
@@ -99,7 +100,10 @@ function Inp({ value, onChange, placeholder, type = 'text', onKeyDown, autoFocus
   )
 }
 
-function Textarea({ value, onChange, placeholder, rows = 3 }: any) {
+function Textarea({ value, onChange, placeholder, rows = 3, members }: any) {
+  if (members && members.length > 0) {
+    return <MentionInput value={value} onChange={onChange} members={members} placeholder={placeholder} rows={rows} />
+  }
   return (
     <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
       style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', width: '100%', resize: 'vertical', background: '#fff', fontFamily: 'inherit' }} />
@@ -260,7 +264,7 @@ export default function ProjectPage() {
       <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
         {tab === 'cases' && (
           <CasesTab sections={sections} cases={cases} projectId={projectId}
-            myRole={myRole} onRefresh={load} onViewCase={(tc) => pushNav('case', tc)} />
+            myRole={myRole} onRefresh={load} onViewCase={(tc) => pushNav('case', tc)} mentionMembers={mentionMembers} />
         )}
         {tab === 'runs' && (
           <RunsTab runs={runs} cases={cases} sections={sections} sprints={sprints} testPlans={testPlans} projectId={projectId}
@@ -352,7 +356,7 @@ export default function ProjectPage() {
 
 // ─── Test Cases Tab ───────────────────────────────────────────────────────────
 
-function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase }: { sections: Section[]; cases: TestCase[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewCase: (tc: any) => void }) {
+function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, mentionMembers = [] }: { sections: Section[]; cases: TestCase[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewCase: (tc: any) => void; mentionMembers?: any[] }) {
   const [addingSection, setAddingSection] = useState(false)
   const [sectionName, setSectionName] = useState('')
   const [addingCaseTo, setAddingCaseTo] = useState<string | null>(null)
@@ -484,7 +488,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase }:
   )
 }
 
-function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: any) {
+function CaseModal({ title, projectId, sectionId, initial, onSave, onClose, mentionMembers = [] }: any) {
   const [form, setForm] = useState({
     title: initial?.title || '',
     description: initial?.description || '',
@@ -528,7 +532,7 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
           <Sel value={form.type} onChange={v => set('type', v)} options={[{ value: 'functional', label: 'Functional' }, { value: 'regression', label: 'Regression' }, { value: 'smoke', label: 'Smoke' }, { value: 'integration', label: 'Integration' }]} />
         </div>
       </div>
-      <Field label="Description"><Textarea value={form.description} onChange={(v: string) => set('description', v)} placeholder="Brief description" rows={2} /></Field>
+      <Field label="Description"><Textarea value={form.description} onChange={(v: string) => set('description', v)} placeholder="Brief description" rows={2} members={mentionMembers} /></Field>
       <Field label="Steps to reproduce"><Textarea value={form.steps} onChange={(v: string) => set('steps', v)} placeholder={"1. Navigate to...\n2. Click...\n3. Verify..."} rows={4} /></Field>
       <Field label="Expected result"><Textarea value={form.expected_result} onChange={(v: string) => set('expected_result', v)} placeholder="What should happen?" rows={2} /></Field>
       <Field label="Attachments (optional)">
@@ -705,6 +709,7 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
   allCases: any[]; sprints: any[]; testPlans: any[]
   onSave: (name: string, ids: string[], sprintId: string, planId: string) => void
   onClose: () => void
+  mentionMembers?: any[]
 }) {
   const [name, setName] = useState('')
   const [sprintId, setSprintId] = useState(sprints[0]?.id || '')

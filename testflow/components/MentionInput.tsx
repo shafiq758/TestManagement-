@@ -116,20 +116,20 @@ export default function MentionInput({ value, onChange, onKeyDown, members, plac
         }}
       />
 
-      {/* Mention dropdown */}
+      {/* Mention dropdown - fixed position to avoid clipping in modals */}
       {showDropdown && filteredMembers.length > 0 && (
         <div style={{
-          position: 'absolute',
-          bottom: '100%',
-          left: 0,
-          right: 0,
+          position: 'fixed',
+          left: textareaRef.current ? textareaRef.current.getBoundingClientRect().left : 0,
+          top: textareaRef.current ? textareaRef.current.getBoundingClientRect().top - 4 : 0,
+          transform: 'translateY(-100%)',
+          width: textareaRef.current ? textareaRef.current.getBoundingClientRect().width : 300,
           background: '#fff',
           border: '1px solid #e5e7eb',
           borderRadius: 8,
-          boxShadow: '0 -4px 16px rgba(0,0,0,0.1)',
-          zIndex: 1000,
+          boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
+          zIndex: 9999,
           overflow: 'hidden',
-          marginBottom: 4,
         }}>
           <div style={{ padding: '6px 10px 4px', fontSize: 11, color: '#9ca3af', fontWeight: 600, borderBottom: '1px solid #f3f4f6' }}>
             MENTION A MEMBER
