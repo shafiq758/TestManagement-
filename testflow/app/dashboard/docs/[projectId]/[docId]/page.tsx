@@ -365,18 +365,21 @@ export default function DocEditorPage() {
 
   // Send notification for @mentions
   const sendMentionNotifications = async (text: string, link: string, type = 'mention') => {
-    const { data: { session } } = await sb.auth.getSession()
-    const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
-    if (!proj) return
-    await fetch('/api/notifications', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text, projectId, docId, type, link,
-        createdBy: session?.user.id,
-        workspaceId: proj.workspace_id,
-      }),
-    })
+    if (!text.includes('@')) return
+    try {
+      const { data: { session } } = await sb.auth.getSession()
+      const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+      if (!proj || !session) return
+      await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text, projectId, docId, type, link,
+          createdBy: session.user.id,
+          workspaceId: proj.workspace_id,
+        }),
+      })
+    } catch(e) { console.error('Notification error:', e) }
   }
 
   const submitComment = async () => {

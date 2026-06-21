@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
+import MentionInput from '@/components/MentionInput'
 import AttachmentUploader, { type Attachment } from '@/components/AttachmentUploader'
 import type { Bug, BugSeverity, BugStatus, Priority, WorkspaceRole } from '@/types'
 
@@ -61,9 +62,10 @@ function Field({ label, children, required }: any) {
 const inp: React.CSSProperties = { width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', boxSizing: 'border-box' }
 const sel: React.CSSProperties = { ...inp, cursor: 'pointer', background: '#fff' }
 
-export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases, canEdit, onRefresh, onViewBug }: {
+export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases, canEdit, onRefresh, onViewBug, members = [] }: {
   bugs: Bug[]; projectId: string; sprints: any[]; testRuns: any[]; testCases: any[]
   canEdit: boolean; onRefresh: () => void; onViewBug: (b: Bug) => void
+  members?: any[]
 }) {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState<Bug | null>(null)

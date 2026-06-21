@@ -8,6 +8,7 @@ import SprintsTab from '@/components/SprintsTab'
 import BugsTab from '@/components/BugsTab'
 import AttachmentUploader, { type Attachment } from '@/components/AttachmentUploader'
 import ImportExportModal from '@/components/ImportExportModal'
+import MentionInput from '@/components/MentionInput'
 import ProjectMembersTab from '@/components/ProjectMembersTab'
 import type { Bug } from '@/types'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
@@ -166,6 +167,7 @@ export default function ProjectPage() {
   const [cases, setCases] = useState<TestCase[]>([])
   const [runs, setRuns] = useState<TestRun[]>([])
   const [projectMembers, setProjectMembers] = useState<any[]>([])
+  const [mentionMembers, setMentionMembers] = useState<any[]>([])
   const [tab, setTab] = useState<'cases' | 'runs' | 'sprints' | 'milestones' | 'bugs' | 'members'>('cases')
   const [loading, setLoading] = useState(true)
   const [myRole, setMyRole] = useState<WorkspaceRole>('viewer')
@@ -250,7 +252,7 @@ export default function ProjectPage() {
         )}
         {tab === 'runs' && (
           <RunsTab runs={runs} cases={cases} sections={sections} sprints={sprints} testPlans={testPlans} projectId={projectId}
-            myRole={myRole} onRefresh={load} bugs={bugs} execHistory={execHistory}
+            myRole={myRole} onRefresh={load} bugs={bugs} execHistory={execHistory} mentionMembers={mentionMembers}
             onViewRun={(run) => pushNav('run', run)}
             onViewRunCase={(tc, results, runId, bugsArr) => pushNav('runcase', tc, {results, runId, bugs: bugsArr || bugs})} />
         )}
@@ -534,7 +536,7 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose }: an
 
 // ─── Test Runs Tab ────────────────────────────────────────────────────────────
 
-function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh, onViewRun, onViewRunCase, bugs, execHistory }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewRun: (run: TestRun) => void; onViewRunCase: (tc: any, results: Record<string, RunStatus>, runId: string, bugs?: any[]) => void; bugs: any[]; execHistory: any[] }) {
+function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh, onViewRun, onViewRunCase, bugs, execHistory, mentionMembers = [] }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewRun: (run: TestRun) => void; onViewRunCase: (tc: any, results: Record<string, RunStatus>, runId: string, bugs?: any[]) => void; bugs: any[]; execHistory: any[]; mentionMembers?: any[] }) {
   const [creating, setCreating] = useState(false)
   const [activeRun, setActiveRun] = useState<string | null>(null)
   const [commentModal, setCommentModal] = useState<{runId: string; caseId: string; status: RunStatus} | null>(null)
@@ -673,6 +675,7 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
           sprints={sprints}
           runs={runs}
           cases={cases}
+          members={mentionMembers}
           onConfirm={(comment) => {
             updateResult(commentModal.runId, commentModal.caseId, commentModal.status, comment)
             setCommentModal(null)
@@ -1421,9 +1424,10 @@ const linkBtn: React.CSSProperties = { background: 'none', border: 'none', curso
 const bugLinkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline', textAlign: 'left' as const }
 
 // ─── Fail Comment Modal ───────────────────────────────────────────────────────
-function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, runs, cases, onConfirm, onClose }: {
+function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, runs, cases, members, onConfirm, onClose }: {
   status: RunStatus; runId: string; caseId: string
   allBugs: any[]; projectId: string; sprints: any[]; runs: any[]; cases: any[]
+  members?: any[]
   onConfirm: (comment: string, bugId?: string) => void
   onClose: () => void
 }) {
@@ -1503,10 +1507,13 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
             <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>
               Comment <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span>
             </label>
-            <textarea value={comment} onChange={e => setComment(e.target.value)}
-              placeholder="e.g. Failed on Chrome only, passed on Firefox"
-              rows={3} autoFocus
-              style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+            <MentionInput
+              value={comment}
+              onChange={setComment}
+              members={members || []}
+              placeholder="e.g. Failed on Chrome only... type @ to mention"
+              rows={3}
+            />
           </div>
 
           {/* Bug linking — only for fail */}
