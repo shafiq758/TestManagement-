@@ -363,6 +363,22 @@ export default function DocEditorPage() {
     setShowCommentModal(true)
   }
 
+  // Send notification for @mentions
+  const sendMentionNotifications = async (text: string, link: string, type = 'mention') => {
+    const { data: { session } } = await sb.auth.getSession()
+    const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+    if (!proj) return
+    await fetch('/api/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text, projectId, docId, type, link,
+        createdBy: session?.user.id,
+        workspaceId: proj.workspace_id,
+      }),
+    })
+  }
+
   const submitComment = async () => {
     if (!pendingComment || !commentText.trim()) return
     const { data: { session } } = await sb.auth.getSession()
@@ -377,6 +393,11 @@ export default function DocEditorPage() {
     if (newComment) setComments(p => [...p, newComment])
     setShowCommentModal(false)
     setPendingComment(null)
+    // Send mention notifications
+    if (commentText.includes('@')) {
+      const link = `/dashboard/docs/${projectId}/${docId}`
+      await sendMentionNotifications(commentText, link, 'comment')
+    }
   }
 
   const uploadAttachment = async (file: File) => {
@@ -409,6 +430,12 @@ export default function DocEditorPage() {
       setReplies(p => ({ ...p, [commentId]: [...(p[commentId] || []), newReply] }))
       setReplyText(p => ({ ...p, [commentId]: '' }))
       setShowReplyInput(p => ({ ...p, [commentId]: false }))
+      // Send mention notifications
+      const replyTxt = replyText[commentId] || ''
+      if (replyTxt.includes('@')) {
+        const link = `/dashboard/docs/${projectId}/${docId}`
+        await sendMentionNotifications(replyTxt, link, 'reply')
+      }
     }
   }
 

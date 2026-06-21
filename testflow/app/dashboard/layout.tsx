@@ -1,4 +1,5 @@
 'use client'
+import NotificationBell from '@/components/NotificationBell'
 import { useEffect, useState, useCallback } from 'react'
 import { useInactivity } from '@/lib/useInactivity'
 import { useRouter, useParams } from 'next/navigation'
@@ -16,6 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<any>(null)
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [myRole, setMyRole] = useState<WorkspaceRole>('viewer')
+  const [currentUserId, setCurrentUserId] = useState<string>('')
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -252,6 +254,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <div style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            {currentUserId && <NotificationBell userId={currentUserId} />}
             <p style={{ fontSize: 12, color: '#6b7280', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
               {user?.user_metadata?.name || user?.email}
             </p>
