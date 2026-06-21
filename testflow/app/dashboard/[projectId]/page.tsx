@@ -204,11 +204,15 @@ export default function ProjectPage() {
         const { data: allMembers } = await sb.from('workspace_members')
           .select('user_id, invited_email, display_name')
           .eq('workspace_id', proj.workspace_id)
-        setMentionMembers((allMembers || []).map((m: any) => ({
+        const mapped = (allMembers || []).map((m: any) => ({
           id: m.user_id,
           email: m.invited_email,
           name: m.display_name || m.invited_email?.split('@')[0]
-        })))
+        }))
+        setMentionMembers(mapped)
+        if (typeof window !== 'undefined') {
+          (window as any).__testflow_members = mapped
+        }
       }
       if (mem) setMyRole(mem.role)
     }
