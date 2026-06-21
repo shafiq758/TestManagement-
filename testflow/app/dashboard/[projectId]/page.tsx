@@ -1228,6 +1228,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
               </div>
             </div>
           )}
+          <InlineComments entityId={data.id} entityType="test_case" />
         </div>
       )
     }
@@ -1361,6 +1362,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
               ))}
             </div>
           )}
+          <InlineComments entityId={data.id} entityType="bug" />
         </div>
       )
     }
