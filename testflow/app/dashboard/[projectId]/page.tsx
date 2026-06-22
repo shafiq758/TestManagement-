@@ -180,6 +180,25 @@ export default function ProjectPage() {
   const [testPlans, setTestPlans] = useState<any[]>([])
   const [bugs, setBugs] = useState<Bug[]>([])
   const [execHistory, setExecHistory] = useState<any[]>([])
+  // Send mention notifications
+  const sendProjectMentionNotifications = async (text: string, link: string) => {
+    if (!text.includes('@')) return
+    try {
+      const { data: { session } } = await sb.auth.getSession()
+      const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+      if (!proj || !session) return
+      await fetch('/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text, projectId, type: 'mention', link,
+          createdBy: session.user.id,
+          workspaceId: proj.workspace_id,
+        }),
+      })
+    } catch(e) { console.error('Notification error:', e) }
+  }
+
   // Drill-down navigation stack
   // Each entry: { type: 'milestone'|'sprint'|'plan'|'case'|'run'|'runcase', data: any, extra?: any }
   const [navStack, setNavStack] = useState<Array<{type: string; data: any; extra?: any}>>([])
@@ -517,10 +536,32 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose, ment
       expected_result: form.expected_result, priority: form.priority, type: form.type,
       attachments: form.attachments.map((a: Attachment) => a.url),
     }
+    let caseId = initial?.id
     if (initial) {
       await sb.from('test_cases').update(payload).eq('id', initial.id)
     } else {
-      await sb.from('test_cases').insert({ ...payload, section_id: sectionId, project_id: projectId })
+      const { data: newCase } = await sb.from('test_cases').insert({ ...payload, section_id: sectionId, project_id: projectId }).select().single()
+      caseId = newCase?.id
+    }
+    // Send mention notifications for description
+    const mentionText = [form.description, form.steps, form.expected_result].join(' ')
+    if (mentionText.includes('@') && caseId) {
+      try {
+        const { data: { session } } = await sb.auth.getSession()
+        const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+        if (proj && session) {
+          await fetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: mentionText, projectId, type: 'mention',
+              link: window.location.pathname,
+              createdBy: session.user.id,
+              workspaceId: proj.workspace_id,
+            }),
+          })
+        }
+      } catch(e) { console.error('Notification error:', e) }
     }
     onSave()
   }

@@ -77,7 +77,9 @@ export default function NotificationBell({ userId }: { userId: string }) {
   const handleClick = async (n: any) => {
     await markRead(n.id)
     setShowDropdown(false)
-    if (n.link) router.push(n.link)
+    if (n.link) {
+      router.push(n.link)
+    }
   }
 
   const typeIcon: Record<string, string> = {

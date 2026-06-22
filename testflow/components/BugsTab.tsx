@@ -116,6 +116,26 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
     } else {
       await sb.from('bugs').insert(payload)
     }
+    // Send mention notifications
+    const mentionText = [form.description, form.steps, form.expected_result, form.actual_result].join(' ')
+    if (mentionText.includes('@') && session) {
+      try {
+        const sbClient = createClient()
+        const { data: projData } = await sbClient.from('projects').select('workspace_id').eq('id', projectId).single()
+        if (projData) {
+          await fetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: mentionText, projectId, type: 'mention',
+              link: window.location.pathname,
+              createdBy: session.user.id,
+              workspaceId: projData.workspace_id,
+            }),
+          })
+        }
+      } catch(e) { console.error('Notification error:', e) }
+    }
     setShowModal(false); onRefresh()
   }
 
