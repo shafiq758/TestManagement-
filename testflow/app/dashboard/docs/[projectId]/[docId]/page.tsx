@@ -435,8 +435,9 @@ export default function DocEditorPage() {
       setReplies(p => ({ ...p, [commentId]: [...(p[commentId] || []), newReply] }))
       setReplyText(p => ({ ...p, [commentId]: '' }))
       setShowReplyInput(p => ({ ...p, [commentId]: false }))
-      // Send mention notifications
+      // Send mention notifications for replies
       const replyTxt = replyText[commentId] || ''
+      console.log('Reply submitted, checking for mentions:', replyTxt)
       if (replyTxt.includes('@')) {
         const link = `/dashboard/docs/${projectId}/${docId}`
         await sendMentionNotifications(replyTxt, link, 'reply')

@@ -122,9 +122,9 @@ export default function NotificationBell({ userId }: { userId: string }) {
       {/* Dropdown */}
       {showDropdown && (
         <div style={{
-          position: 'absolute', bottom: '100%', left: '50%',
-          transform: 'translateX(-50%)',
-          marginBottom: 8,
+          position: 'fixed',
+          bottom: 60,
+          left: 16,
           background: '#fff', border: '1px solid #e5e7eb',
           borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
           width: 340, maxHeight: 480, overflow: 'hidden',

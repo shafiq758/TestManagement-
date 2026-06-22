@@ -46,6 +46,33 @@ export default function InlineComments({ entityId, entityType, mentionMembers = 
       created_by: session?.user.id,
     }).select().single()
     if (comment) setComments(p => [...p, comment])
+
+    // Send mention notifications
+    if (newComment.includes('@') && session) {
+      try {
+        const { data: entity } = await sb.from(
+          entityType === 'test_case' ? 'test_cases' : 'bugs'
+        ).select('project_id').eq('id', entityId).single()
+        if (entity) {
+          const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', entity.project_id).single()
+          if (proj) {
+            await fetch('/api/notifications', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: newComment,
+                projectId: entity.project_id,
+                type: 'mention',
+                link: window.location.pathname,
+                createdBy: session.user.id,
+                workspaceId: proj.workspace_id,
+              }),
+            })
+          }
+        }
+      } catch(e) { console.error('Notification error:', e) }
+    }
+
     setNewComment('')
     setSubmitting(false)
   }
