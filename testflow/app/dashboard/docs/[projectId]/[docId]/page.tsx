@@ -397,8 +397,10 @@ export default function DocEditorPage() {
     setShowCommentModal(false)
     setPendingComment(null)
     // Send mention notifications
+    console.log('Comment submitted, checking for mentions. Text:', commentText, 'Has @:', commentText.includes('@'))
     if (commentText.includes('@')) {
       const link = `/dashboard/docs/${projectId}/${docId}`
+      console.log('Sending mention notification for:', commentText)
       await sendMentionNotifications(commentText, link, 'comment')
     }
   }
