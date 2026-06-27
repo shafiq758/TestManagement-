@@ -378,12 +378,21 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
           {/* Assign to */}
           {members.length > 0 && (
             <Field label="Assign to">
-              <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} style={sel}>
-                <option value="">Unassigned</option>
-                {members.map((m: any) => (
-                  <option key={m.id} value={m.id}>{m.name || m.email}</option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} style={{ ...sel, flex: 1 }}>
+                  <option value="">Unassigned</option>
+                  {members.map((m: any) => (
+                    <option key={m.id} value={m.id}>{m.name || m.email}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={async () => {
+                  const { data: { session } } = await sb.auth.getSession()
+                  if (session) set('assigned_to', session.user.id)
+                }}
+                  style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 12px', fontSize: 12, background: '#f9fafb', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+                  Assign to me
+                </button>
+              </div>
               {form.assigned_to && (
                 <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>
                   🔔 {getMemberName(form.assigned_to)} will be notified when assigned.
