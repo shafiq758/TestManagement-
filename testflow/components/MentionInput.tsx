@@ -10,9 +10,10 @@ interface MentionInputProps {
   placeholder?: string
   rows?: number
   onKeyDown?: (e: React.KeyboardEvent) => void
+  style?: React.CSSProperties
 }
 
-export default function MentionInput({ value, onChange, members = [], placeholder, rows = 3, onKeyDown }: MentionInputProps) {
+export default function MentionInput({ value, onChange, members = [], placeholder, rows = 3, onKeyDown, style = {} }: MentionInputProps) {
   const [showDropdown, setShowDropdown] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionIndex, setMentionIndex] = useState(0)
@@ -112,7 +113,7 @@ export default function MentionInput({ value, onChange, members = [], placeholde
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         rows={rows}
-        style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', width: '100%', resize: 'vertical', background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box' }}
+        style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', width: '100%', resize: 'vertical', background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box', ...style }}
       />
 
       {showDropdown && filteredMembers.length > 0 && (
