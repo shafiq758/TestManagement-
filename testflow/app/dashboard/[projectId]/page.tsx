@@ -14,20 +14,11 @@ import ProjectMembersTab from '@/components/ProjectMembersTab'
 import type { Bug } from '@/types'
 import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
-// ─── Detail Drawer ───────────────────────────────────────────────────────────
-
 function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
-      {/* Dark overlay — full screen, closes on click */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={onClose} />
-      {/* Panel — fixed to right edge, above overlay */}
-      <div style={{
-        position: 'absolute', top: 0, right: 0, bottom: 0,
-        width: 480, background: '#fff',
-        boxShadow: '-4px 0 24px rgba(0,0,0,0.15)',
-        display: 'flex', flexDirection: 'column', overflowY: 'auto',
-      }}>
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 480, background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <span style={{ fontWeight: 600, fontSize: 15 }}>{title}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>
@@ -47,8 +38,6 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
     </div>
   )
 }
-
-// ─── Global Drawer (renders at page level, never clipped) ────────────────────
 
 function GlobalDrawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -75,27 +64,16 @@ function GDRow({ label, value }: { label: string; value?: React.ReactNode }) {
   )
 }
 
-// ─── UI primitives ────────────────────────────────────────────────────────────
-
 function Btn({ children, onClick, primary, sm, disabled, style = {} }: any) {
   return (
     <button onClick={disabled ? undefined : onClick} disabled={disabled}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        border: primary ? 'none' : '1px solid #d1d5db',
-        borderRadius: 7, padding: sm ? '5px 10px' : '7px 14px',
-        fontSize: sm ? 12 : 13, fontWeight: primary ? 500 : 400,
-        background: primary ? '#111' : '#fff', color: primary ? '#fff' : '#374151',
-        cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
-        whiteSpace: 'nowrap', ...style,
-      }}>{children}</button>
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: primary ? 'none' : '1px solid #d1d5db', borderRadius: 7, padding: sm ? '5px 10px' : '7px 14px', fontSize: sm ? 12 : 13, fontWeight: primary ? 500 : 400, background: primary ? '#111' : '#fff', color: primary ? '#fff' : '#374151', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, whiteSpace: 'nowrap', ...style }}>{children}</button>
   )
 }
 
 function Inp({ value, onChange, placeholder, type = 'text', onKeyDown, autoFocus, style = {} }: any) {
   return (
-    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-      type={type} onKeyDown={onKeyDown} autoFocus={autoFocus}
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type} onKeyDown={onKeyDown} autoFocus={autoFocus}
       style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', width: '100%', background: '#fff', ...style }} />
   )
 }
@@ -162,8 +140,6 @@ const STATUS_BTN: Record<string, { bg: string; color: string }> = {
   untested: { bg: '#f3f4f6', color: '#6b7280' },
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
-
 export default function ProjectPage() {
   const { projectId } = useParams() as { projectId: string }
   const [project, setProject] = useState<Project | null>(null)
@@ -180,44 +156,22 @@ export default function ProjectPage() {
   const [testPlans, setTestPlans] = useState<any[]>([])
   const [bugs, setBugs] = useState<Bug[]>([])
   const [execHistory, setExecHistory] = useState<any[]>([])
-  // Send mention notifications
-  const sendProjectMentionNotifications = async (text: string, link: string) => {
-    if (!text.includes('@')) return
-    try {
-      const { data: { session } } = await sb.auth.getSession()
-      const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
-      if (!proj || !session) return
-      await fetch('/api/notifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text, projectId, type: 'mention', link,
-          createdBy: session.user.id,
-          workspaceId: proj.workspace_id,
-        }),
-      })
-    } catch(e) { console.error('Notification error:', e) }
-  }
 
-  // Drill-down navigation stack
-  // Each entry: { type: 'milestone'|'sprint'|'plan'|'case'|'run'|'runcase', data: any, extra?: any }
   const [navStack, setNavStack] = useState<Array<{type: string; data: any; extra?: any}>>([])
-  const [drawerBug, setDrawerBug] = useState<Bug | null>(null)
-  const pushNav = (type: string, data: any, extra?: any) => setNavStack(p => [...p, {type, data, extra}])
-  const popNav = () => setNavStack(p => p.slice(0, -1))
-  const goToIndex = (i: number) => setNavStack(p => p.slice(0, i + 1))
-  const clearNav = () => setNavStack([])
   const [globalCommentModal, setGlobalCommentModal] = useState<{runId: string; caseId: string; status: RunStatus} | null>(null)
 
   const sb = createClient()
 
+  const pushNav = (type: string, data: any, extra?: any) => setNavStack(p => [...p, {type, data, extra}])
+  const popNav = () => setNavStack(p => p.slice(0, -1))
+  const goToIndex = (i: number) => setNavStack(p => p.slice(0, i + 1))
+  const clearNav = () => setNavStack([])
+
   const load = useCallback(async () => {
     setLoading(true)
-    // Get user role
     const { data: { session } } = await sb.auth.getSession()
     if (session) {
       const { data: mem } = await sb.from('workspace_members').select('role').eq('user_id', session.user.id).eq('status', 'active').single()
-      // Load all workspace members for @mention
       const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
       if (proj) {
         const { data: allMembers } = await sb.from('workspace_members')
@@ -248,7 +202,6 @@ export default function ProjectPage() {
     setProject(proj); setSections(secs || []); setCases(tcs || []); setRuns(trs || [])
     setMilestones(mils || []); setSprints(sprs || []); setTestPlans(plans || [])
     setBugs((bugsData as any) || [])
-    // Fetch execution history for all runs in project
     const runIds = (trs || []).map((r: any) => r.id)
     if (runIds.length > 0) {
       const { data: hist } = await sb.from('execution_history').select('*').in('test_run_id', runIds).order('executed_at', {ascending: false})
@@ -259,28 +212,40 @@ export default function ProjectPage() {
 
   useEffect(() => { load() }, [load])
 
+  // ── AUTO-OPEN FROM NOTIFICATION CLICK ──
+  useEffect(() => {
+    if (loading) return
+    const params = new URLSearchParams(window.location.search)
+    const openType = params.get('open')
+    const openId = params.get('id')
+    if (!openType || !openId) return
+    if (openType === 'case') {
+      const tc = cases.find((c: any) => c.id === openId)
+      if (tc) {
+        // Add section name
+        const sec = sections.find((s: any) => s.id === tc.section_id)
+        pushNav('case', { ...tc, sectionName: sec?.name || '' })
+      }
+    } else if (openType === 'bug') {
+      const bug = bugs.find((b: any) => b.id === openId)
+      if (bug) pushNav('bug', bug)
+    }
+    // Clear URL params without reload
+    window.history.replaceState({}, '', window.location.pathname)
+  }, [loading, cases, bugs])
+
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}><p style={{ color: '#9ca3af', fontSize: 13 }}>Loading…</p></div>
   if (!project) return <div style={{ padding: 24 }}><p style={{ color: '#ef4444' }}>Project not found.</p></div>
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fff' }}>
-      {/* Header */}
       <div style={{ padding: '18px 26px 0', borderBottom: '1px solid #e5e7eb' }}>
         <h1 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 600 }}>{project.name}</h1>
         <div style={{ display: 'flex', gap: 0 }}>
           {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones'], ['bugs', 'Bugs'], ['members', 'Members']] as const).map(([t, label]) => (
-            <button key={t} onClick={() => setTab(t as any)} style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 600 : 400,
-              color: tab === t ? '#111' : '#6b7280',
-              padding: '8px 16px', borderBottom: tab === t ? '2px solid #111' : '2px solid transparent',
-              marginBottom: -1,
-            }}>{label}</button>
+            <button key={t} onClick={() => setTab(t as any)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#111' : '#6b7280', padding: '8px 16px', borderBottom: tab === t ? '2px solid #111' : '2px solid transparent', marginBottom: -1 }}>{label}</button>
           ))}
-          <a href={`/dashboard/reports/${projectId}`}
-            style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none', padding: '8px 16px', borderBottom: '2px solid transparent', display: 'inline-flex', alignItems: 'center', marginBottom: -1 }}>
-            📊 Reports
-          </a>
+          <a href={`/dashboard/reports/${projectId}`} style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none', padding: '8px 16px', borderBottom: '2px solid transparent', display: 'inline-flex', alignItems: 'center', marginBottom: -1 }}>📊 Reports</a>
         </div>
       </div>
 
@@ -309,14 +274,8 @@ export default function ProjectPage() {
             canEdit={canEditCases(myRole)} onRefresh={load} onViewMilestone={(m) => pushNav('milestone', m)} />
         )}
         {tab === 'members' && (
-          <ProjectMembersTab
-            projectId={projectId}
-            workspaceId={project?.workspace_id || ''}
-            myRole={myRole}
-            isAdmin={myRole === 'admin'}
-          />
+          <ProjectMembersTab projectId={projectId} workspaceId={project?.workspace_id || ''} myRole={myRole} isAdmin={myRole === 'admin'} />
         )}
-
         {tab === 'bugs' && (
           <BugsTab bugs={bugs} projectId={projectId} sprints={sprints}
             testRuns={runs} testCases={cases}
@@ -324,7 +283,6 @@ export default function ProjectPage() {
         )}
       </div>
 
-            {/* Global comment modal from drill-down */}
       {globalCommentModal && (
         <FailCommentModal
           status={globalCommentModal.status}
@@ -356,7 +314,6 @@ export default function ProjectPage() {
         />
       )}
 
-      {/* ── Drill-down Detail Panel ── */}
       {navStack.length > 0 && <DrillDown
         stack={navStack}
         cases={cases} sections={sections} sprints={sprints}
@@ -372,12 +329,9 @@ export default function ProjectPage() {
           load()
         }}
       />}
-
     </div>
   )
 }
-
-// ─── Test Cases Tab ───────────────────────────────────────────────────────────
 
 function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, mentionMembers = [] }: { sections: Section[]; cases: TestCase[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewCase: (tc: any) => void; mentionMembers?: any[] }) {
   const [addingSection, setAddingSection] = useState(false)
@@ -413,9 +367,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
-          {total} test case{total !== 1 ? 's' : ''} · {sections.length} section{sections.length !== 1 ? 's' : ''}
-        </p>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{total} test case{total !== 1 ? 's' : ''} · {sections.length} section{sections.length !== 1 ? 's' : ''}</p>
         <div style={{ display: 'flex', gap: 6 }}>
           <Btn onClick={() => setShowImportExport(true)} sm>↕ Import / Export</Btn>
           {canEditCases(myRole) && <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>}
@@ -446,17 +398,12 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
         return (
           <div key={section.id} style={{ marginBottom: 10, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#f9fafb', borderBottom: isOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <button onClick={() => setCollapsed(p => ({ ...p, [section.id]: !p[section.id] }))}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#9ca3af', padding: 0 }}>
-                {isOpen ? '▾' : '▸'}
-              </button>
+              <button onClick={() => setCollapsed(p => ({ ...p, [section.id]: !p[section.id] }))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#9ca3af', padding: 0 }}>{isOpen ? '▾' : '▸'}</button>
               <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{section.name}</span>
               <span style={{ fontSize: 11, color: '#9ca3af' }}>{sectionCases.length} case{sectionCases.length !== 1 ? 's' : ''}</span>
               {canEditCases(myRole) && <Btn sm onClick={() => setAddingCaseTo(section.id)}>+ Add case</Btn>}
-              <button onClick={() => deleteSection(section.id)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px' }}>✕</button>
+              <button onClick={() => deleteSection(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px' }}>✕</button>
             </div>
-
             {isOpen && (
               <div>
                 {sectionCases.map((tc, i) => {
@@ -481,8 +428,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
                 })}
                 {sectionCases.length === 0 && (
                   <p style={{ fontSize: 12, color: '#9ca3af', padding: '12px 14px', margin: 0 }}>
-                    No test cases — <button onClick={() => setAddingCaseTo(section.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontSize: 12, textDecoration: 'underline', fontFamily: 'inherit' }}>add one</button>
+                    No test cases — <button onClick={() => setAddingCaseTo(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontSize: 12, textDecoration: 'underline', fontFamily: 'inherit' }}>add one</button>
                   </p>
                 )}
               </div>
@@ -497,10 +443,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
           onSave={() => { setAddingCaseTo(null); onRefresh() }} onClose={() => setAddingCaseTo(null)} />
       )}
       {showImportExport && (
-        <ImportExportModal
-          projectId={projectId} sections={sections} cases={cases}
-          onRefresh={onRefresh} onClose={() => setShowImportExport(false)}
-        />
+        <ImportExportModal projectId={projectId} sections={sections} cases={cases} onRefresh={onRefresh} onClose={() => setShowImportExport(false)} />
       )}
       {editingCase && (
         <CaseModal title="Edit test case" projectId={projectId} sectionId={editingCase.section_id}
@@ -508,7 +451,6 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
           mentionMembers={typeof window !== 'undefined' ? (window as any).__testflow_members || [] : []}
           onSave={() => { setEditingCase(null); onRefresh() }} onClose={() => setEditingCase(null)} />
       )}
-
     </div>
   )
 }
@@ -543,7 +485,7 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose, ment
       const { data: newCase } = await sb.from('test_cases').insert({ ...payload, section_id: sectionId, project_id: projectId }).select().single()
       caseId = newCase?.id
     }
-    // Send mention notifications for description
+    // Send mention notifications
     const mentionText = [form.description, form.steps, form.expected_result].join(' ')
     if (mentionText.includes('@') && caseId) {
       try {
@@ -555,7 +497,7 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose, ment
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               text: mentionText, projectId, type: 'mention',
-              link: window.location.pathname,
+              link: `/dashboard/${projectId}?open=case&id=${caseId}`,
               createdBy: session.user.id,
               workspaceId: proj.workspace_id,
             }),
@@ -583,11 +525,7 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose, ment
       <Field label="Steps to reproduce"><Textarea value={form.steps} onChange={(v: string) => set('steps', v)} placeholder={"1. Navigate to...\n2. Click...\n3. Verify..."} rows={4} /></Field>
       <Field label="Expected result"><Textarea value={form.expected_result} onChange={(v: string) => set('expected_result', v)} placeholder="What should happen?" rows={2} /></Field>
       <Field label="Attachments (optional)">
-        <AttachmentUploader
-          attachments={form.attachments}
-          onChange={(atts: Attachment[]) => set('attachments', atts)}
-          folder="test-cases"
-        />
+        <AttachmentUploader attachments={form.attachments} onChange={(atts: Attachment[]) => set('attachments', atts)} folder="test-cases" />
       </Field>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Btn onClick={onClose}>Cancel</Btn>
@@ -596,8 +534,6 @@ function CaseModal({ title, projectId, sectionId, initial, onSave, onClose, ment
     </Modal>
   )
 }
-
-// ─── Test Runs Tab ────────────────────────────────────────────────────────────
 
 function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh, onViewRun, onViewRunCase, bugs, execHistory, mentionMembers = [] }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewRun: (run: TestRun) => void; onViewRunCase: (tc: any, results: Record<string, RunStatus>, runId: string, bugs?: any[]) => void; bugs: any[]; execHistory: any[]; mentionMembers?: any[] }) {
   const [creating, setCreating] = useState(false)
@@ -616,13 +552,8 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
     if (!run) return
     const results = { ...run.results, [caseId]: status }
     await sb.from('test_runs').update({ results }).eq('id', runId)
-    // Save to execution history
     const { data: { session } } = await sb.auth.getSession()
-    await sb.from('execution_history').insert({
-      test_run_id: runId, test_case_id: caseId,
-      status, comment: comment.trim(),
-      executed_by: session?.user?.id,
-    })
+    await sb.from('execution_history').insert({ test_run_id: runId, test_case_id: caseId, status, comment: comment.trim(), executed_by: session?.user?.id })
     onRefresh()
   }
 
@@ -641,30 +572,17 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
     onRefresh()
   }
 
-  const allCasesWithSection = cases.map(c => ({
-    ...c,
-    sectionName: sections.find(s => s.id === c.section_id)?.name || '',
-  }))
+  const allCasesWithSection = cases.map(c => ({ ...c, sectionName: sections.find(s => s.id === c.section_id)?.name || '' }))
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
-          {runs.length} run{runs.length !== 1 ? 's' : ''}
-        </p>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{runs.length} run{runs.length !== 1 ? 's' : ''}</p>
         {canExecuteRuns(myRole) && <Btn onClick={() => setCreating(true)} sm disabled={testPlans.length === 0}>▶ New test run</Btn>}
       </div>
 
-      {sprints.length === 0 && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
-          Create a Sprint and Test Plan first — test runs must be linked to a test plan.
-        </div>
-      )}
-      {sprints.length > 0 && testPlans.length === 0 && (
-        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>
-          Create a Test Plan inside a sprint first before starting a test run.
-        </div>
-      )}
+      {sprints.length === 0 && <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>Create a Sprint and Test Plan first — test runs must be linked to a test plan.</div>}
+      {sprints.length > 0 && testPlans.length === 0 && <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>Create a Test Plan inside a sprint first before starting a test run.</div>}
 
       {runs.length === 0 && testPlans.length > 0 && (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
@@ -723,11 +641,8 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
         )
       })}
 
-      {creating && (
-        <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />
-      )}
+      {creating && <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />}
 
-      {/* Comment modal — FailCommentModal handles all statuses + bug linking */}
       {commentModal && (
         <FailCommentModal
           status={commentModal.status}
@@ -746,18 +661,11 @@ function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole,
           onClose={() => setCommentModal(null)}
         />
       )}
-
-
     </div>
   )
 }
 
-function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
-  allCases: any[]; sprints: any[]; testPlans: any[]
-  onSave: (name: string, ids: string[], sprintId: string, planId: string) => void
-  onClose: () => void
-  mentionMembers?: any[]
-}) {
+function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: { allCases: any[]; sprints: any[]; testPlans: any[]; onSave: (name: string, ids: string[], sprintId: string, planId: string) => void; onClose: () => void; mentionMembers?: any[] }) {
   const [name, setName] = useState('')
   const [sprintId, setSprintId] = useState(sprints[0]?.id || '')
   const [planId, setPlanId] = useState('')
@@ -765,58 +673,27 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
   const [filterType, setFilterType] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
   const [selected, setSelected] = useState<string[]>([])
-
-  // Plans for selected sprint
   const sprintPlans = testPlans.filter(p => p.sprint_id === sprintId)
-
-  // When sprint changes, reset plan and auto-select first plan's cases
-  const handleSprintChange = (sid: string) => {
-    setSprintId(sid)
-    setPlanId('')
-    setSelected([])
-  }
-
-  // When plan changes, auto-populate cases from plan
-  const handlePlanChange = (pid: string) => {
-    setPlanId(pid)
-    const plan = testPlans.find(p => p.id === pid)
-    setSelected(plan?.case_ids || [])
-  }
-
+  const handleSprintChange = (sid: string) => { setSprintId(sid); setPlanId(''); setSelected([]) }
+  const handlePlanChange = (pid: string) => { setPlanId(pid); const plan = testPlans.find(p => p.id === pid); setSelected(plan?.case_ids || []) }
   const toggle = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
-
-  // Filter cases based on search, type, priority
   const planCaseIds = testPlans.find(p => p.id === planId)?.case_ids || []
   const planCases = planId ? allCases.filter(c => planCaseIds.includes(c.id)) : allCases
-  const filtered = planCases.filter(c => {
-    const matchSearch = !search || c.title.toLowerCase().includes(search.toLowerCase())
-    const matchType = !filterType || c.type === filterType
-    const matchPriority = !filterPriority || c.priority === filterPriority
-    return matchSearch && matchType && matchPriority
-  })
-
+  const filtered = planCases.filter(c => (!search || c.title.toLowerCase().includes(search.toLowerCase())) && (!filterType || c.type === filterType) && (!filterPriority || c.priority === filterPriority))
   const selStyle: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 10px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }
 
   return (
     <Modal title="New test run" onClose={onClose} width={580}>
-      <Field label="Run name" required>
-        <Inp value={name} onChange={setName} placeholder="e.g. Sprint 1 regression" autoFocus />
-      </Field>
-
-      {/* Step 1: Select Sprint */}
+      <Field label="Run name" required><Inp value={name} onChange={setName} placeholder="e.g. Sprint 1 regression" autoFocus /></Field>
       <Field label="Sprint" required>
         <select value={sprintId} onChange={e => handleSprintChange(e.target.value)} style={{ ...selStyle, width: '100%' }}>
           <option value="">— Select sprint —</option>
           {sprints.map(s => <option key={s.id} value={s.id}>{s.name} ({s.status})</option>)}
         </select>
       </Field>
-
-      {/* Step 2: Select Test Plan */}
       {sprintId && (
         <Field label="Test plan" required>
-          {sprintPlans.length === 0 ? (
-            <p style={{ fontSize: 12, color: '#ef4444', margin: 0 }}>No test plans in this sprint. Create one in the Sprints tab first.</p>
-          ) : (
+          {sprintPlans.length === 0 ? <p style={{ fontSize: 12, color: '#ef4444', margin: 0 }}>No test plans in this sprint. Create one in the Sprints tab first.</p> : (
             <select value={planId} onChange={e => handlePlanChange(e.target.value)} style={{ ...selStyle, width: '100%' }}>
               <option value="">— Select test plan —</option>
               {sprintPlans.map(p => <option key={p.id} value={p.id}>{p.name} ({p.case_ids.length} cases)</option>)}
@@ -824,8 +701,6 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
           )}
         </Field>
       )}
-
-      {/* Step 3: Filter and select cases */}
       {planId && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -835,25 +710,11 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
               <button onClick={() => setSelected([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#6b7280', fontFamily: 'inherit' }}>None</button>
             </div>
           </div>
-
-          {/* Filters */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title..." style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 10px', fontSize: 12, outline: 'none' }} />
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={selStyle}>
-              <option value="">All types</option>
-              <option value="functional">Functional</option>
-              <option value="regression">Regression</option>
-              <option value="smoke">Smoke</option>
-              <option value="integration">Integration</option>
-            </select>
-            <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={selStyle}>
-              <option value="">All priorities</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={selStyle}><option value="">All types</option><option value="functional">Functional</option><option value="regression">Regression</option><option value="smoke">Smoke</option><option value="integration">Integration</option></select>
+            <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={selStyle}><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
           </div>
-
           <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
             {filtered.map((tc, i) => (
               <label key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', background: selected.includes(tc.id) ? '#eff6ff' : '#fff' }}>
@@ -869,199 +730,107 @@ function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: {
           <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>{selected.length} of {filtered.length} shown selected</p>
         </div>
       )}
-
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <Btn onClick={onClose}>Cancel</Btn>
-        <Btn primary disabled={!name.trim() || !sprintId || !planId || selected.length === 0}
-          onClick={() => onSave(name.trim(), selected, sprintId, planId)}>Create run</Btn>
+        <Btn primary disabled={!name.trim() || !sprintId || !planId || selected.length === 0} onClick={() => onSave(name.trim(), selected, sprintId, planId)}>Create run</Btn>
       </div>
     </Modal>
   )
 }
 
-// ─── Run Execution with bulk selection ───────────────────────────────────────
-
-function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResult, onBulkUpdate, onViewCase, onShowComment }: {
-  run: TestRun
-  runCases: any[]
-  results: Record<string, RunStatus>
-  execHistory: any[]
-  bugs: any[]
-  onUpdateResult: (runId: string, caseId: string, status: RunStatus, comment?: string) => void
-  onBulkUpdate: (runId: string, caseIds: string[], status: RunStatus) => void
-  onViewCase: (tc: any) => void
-  onShowComment: (runId: string, caseId: string, status: RunStatus) => void
-}) {
+function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResult, onBulkUpdate, onViewCase, onShowComment }: { run: TestRun; runCases: any[]; results: Record<string, RunStatus>; execHistory: any[]; bugs: any[]; onUpdateResult: (runId: string, caseId: string, status: RunStatus, comment?: string) => void; onBulkUpdate: (runId: string, caseIds: string[], status: RunStatus) => void; onViewCase: (tc: any) => void; onShowComment: (runId: string, caseId: string, status: RunStatus) => void }) {
   const [selected, setSelected] = useState<string[]>([])
   const allSelected = selected.length === runCases.length && runCases.length > 0
   const someSelected = selected.length > 0
-
   const toggleOne = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
   const toggleAll = () => setSelected(allSelected ? [] : runCases.map(c => c.id))
-
-  const bulkSet = (status: RunStatus) => {
-    if (selected.length === 0) return
-    onBulkUpdate(run.id, selected, status)
-    setSelected([])
-  }
-
-  const statusColors: Record<string, { bg: string; color: string }> = {
-    pass: { bg: '#dcfce7', color: '#15803d' },
-    fail: { bg: '#fee2e2', color: '#dc2626' },
-    skip: { bg: '#fef9c3', color: '#ca8a04' },
-    untested: { bg: '#f3f4f6', color: '#6b7280' },
-  }
+  const bulkSet = (status: RunStatus) => { if (selected.length === 0) return; onBulkUpdate(run.id, selected, status); setSelected([]) }
+  const statusColors: Record<string, { bg: string; color: string }> = { pass: { bg: '#dcfce7', color: '#15803d' }, fail: { bg: '#fee2e2', color: '#dc2626' }, skip: { bg: '#fef9c3', color: '#ca8a04' }, untested: { bg: '#f3f4f6', color: '#6b7280' } }
 
   return (
     <>
-    <div>
-      {/* Bulk action toolbar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderTop: '1px solid #f3f4f6', background: someSelected ? '#eff6ff' : '#fafafa' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#6b7280' }}>
-          <input type="checkbox" checked={allSelected} onChange={toggleAll}
-            ref={el => { if (el) el.indeterminate = someSelected && !allSelected }}
-            style={{ cursor: 'pointer' }} />
-          {someSelected ? `${selected.length} selected` : 'Select all'}
-        </label>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderTop: '1px solid #f3f4f6', background: someSelected ? '#eff6ff' : '#fafafa' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#6b7280' }}>
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} ref={el => { if (el) el.indeterminate = someSelected && !allSelected }} style={{ cursor: 'pointer' }} />
+            {someSelected ? `${selected.length} selected` : 'Select all'}
+          </label>
+          {someSelected && (
+            <>
+              <span style={{ fontSize: 12, color: '#9ca3af' }}>Set as:</span>
+              {(['pass', 'fail', 'skip'] as const).map(s => (
+                <button key={s} onClick={() => bulkSet(s)} style={{ padding: '4px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6, border: '1px solid #e5e7eb', background: statusColors[s].bg, color: statusColors[s].color, fontWeight: 600 }}>
+                  {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
+                </button>
+              ))}
+              <button onClick={() => setSelected([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', fontFamily: 'inherit', marginLeft: 'auto' }}>Clear selection</button>
+            </>
+          )}
+          {!someSelected && <span style={{ fontSize: 12, color: '#9ca3af' }}>Select cases to bulk update status</span>}
+        </div>
 
-        {someSelected && (
-          <>
-            <span style={{ fontSize: 12, color: '#9ca3af' }}>Set as:</span>
-            {(['pass', 'fail', 'skip'] as const).map(s => (
-              <button key={s} onClick={() => bulkSet(s)} style={{
-                padding: '4px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-                borderRadius: 6, border: '1px solid #e5e7eb',
-                background: statusColors[s].bg, color: statusColors[s].color, fontWeight: 600,
-              }}>
-                {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
-              </button>
-            ))}
-            <button onClick={() => setSelected([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', fontFamily: 'inherit', marginLeft: 'auto' }}>
-              Clear selection
-            </button>
-          </>
-        )}
-
-        {!someSelected && (
-          <span style={{ fontSize: 12, color: '#9ca3af' }}>Select cases to bulk update status</span>
-        )}
-      </div>
-
-      {/* Case rows */}
-      {runCases.map((tc, i) => {
-        const cur = (results[tc.id] || 'untested') as RunStatus
-        const isSelected = selected.includes(tc.id)
-        const sc = statusColors[cur]
-        const hist = execHistory.filter((h: any) => h.test_case_id === tc.id).slice(0, 5)
-        const hc: Record<string, {bg:string;color:string}> = {
-          pass:{bg:'#dcfce7',color:'#15803d'},
-          fail:{bg:'#fee2e2',color:'#dc2626'},
-          skip:{bg:'#fef9c3',color:'#ca8a04'},
-        }
-        return (
-          <div key={tc.id}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px',
-              borderTop: '1px solid #f3f4f6',
-              background: isSelected ? '#eff6ff' : 'transparent',
-              transition: 'background 0.1s',
-            }}>
-              <input type="checkbox" checked={isSelected} onChange={() => toggleOne(tc.id)} style={{ cursor: 'pointer', flexShrink: 0 }} />
-              <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
-              <button onClick={() => onViewCase(tc)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, flex: 1, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{tc.title}</button>
-              <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: sc.bg, color: sc.color, minWidth: 54, textAlign: 'center' }}>
-                  {cur}
-                </span>
-                <div style={{ display: 'flex', gap: 3 }}>
-                  {(['pass', 'fail', 'skip'] as const).map(s => (
-                    <button key={s} onClick={() => onShowComment(run.id, tc.id, s)}
-                      title={s}
-                      style={{
-                        width: 24, height: 24, fontSize: 12, cursor: 'pointer',
-                        borderRadius: 4, border: `1px solid ${cur === s ? statusColors[s].color : '#e5e7eb'}`,
-                        background: cur === s ? statusColors[s].bg : '#fff',
-                        color: cur === s ? statusColors[s].color : '#9ca3af',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                      {s === 'pass' ? '✓' : s === 'fail' ? '✗' : '–'}
-                    </button>
-                  ))}
+        {runCases.map((tc, i) => {
+          const cur = (results[tc.id] || 'untested') as RunStatus
+          const isSelected = selected.includes(tc.id)
+          const sc = statusColors[cur]
+          const hist = execHistory.filter((h: any) => h.test_case_id === tc.id).slice(0, 5)
+          const hc: Record<string, {bg:string;color:string}> = { pass:{bg:'#dcfce7',color:'#15803d'}, fail:{bg:'#fee2e2',color:'#dc2626'}, skip:{bg:'#fef9c3',color:'#ca8a04'} }
+          return (
+            <div key={tc.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f3f4f6', background: isSelected ? '#eff6ff' : 'transparent', transition: 'background 0.1s' }}>
+                <input type="checkbox" checked={isSelected} onChange={() => toggleOne(tc.id)} style={{ cursor: 'pointer', flexShrink: 0 }} />
+                <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+                <button onClick={() => onViewCase(tc)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, flex: 1, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{tc.title}</button>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: sc.bg, color: sc.color, minWidth: 54, textAlign: 'center' }}>{cur}</span>
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    {(['pass', 'fail', 'skip'] as const).map(s => (
+                      <button key={s} onClick={() => onShowComment(run.id, tc.id, s)} title={s}
+                        style={{ width: 24, height: 24, fontSize: 12, cursor: 'pointer', borderRadius: 4, border: `1px solid ${cur === s ? statusColors[s].color : '#e5e7eb'}`, background: cur === s ? statusColors[s].bg : '#fff', color: cur === s ? statusColors[s].color : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {s === 'pass' ? '✓' : s === 'fail' ? '✗' : '–'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
+              {hist.length > 0 && (
+                <div style={{ padding: '5px 16px 8px 58px', background: '#fafafa', borderTop: '1px solid #f9fafb' }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution History</p>
+                  {hist.map((h: any) => (
+                    <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                      <span style={{ background: (hc[h.status]||{bg:'#f3f4f6',color:'#6b7280'}).bg, color: (hc[h.status]||{bg:'#f3f4f6',color:'#6b7280'}).color, fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 3, minWidth: 34, textAlign: 'center' as const }}>{h.status}</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(h.executed_at).toLocaleString()}</span>
+                      {h.comment && <span style={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>"{h.comment}"</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {hist.length > 0 && (
-              <div style={{ padding: '5px 16px 8px 58px', background: '#fafafa', borderTop: '1px solid #f9fafb' }}>
-                <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution History</p>
-                {hist.map((h: any) => (
-                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                    <span style={{ background: (hc[h.status]||{bg:'#f3f4f6',color:'#6b7280'}).bg, color: (hc[h.status]||{bg:'#f3f4f6',color:'#6b7280'}).color, fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 3, minWidth: 34, textAlign: 'center' as const }}>{h.status}</span>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(h.executed_at).toLocaleString()}</span>
-                    {h.comment && <span style={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>"{h.comment}"</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
+          )
+        })}
+      </div>
     </>
   )
 }
 
-// ─── DrillDown Panel ─────────────────────────────────────────────────────────
-// Renders as a full-height overlay with breadcrumb navigation
-
 function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestones, bugs, myRole, onPush, onPop, onGoTo, onClose, onUpdateRunResult, onViewBug, onShowComment }: {
-  stack: Array<{type: string; data: any; extra?: any}>
-  cases: any[]; sections: any[]; sprints: any[]; testPlans: any[]; runs: any[]; milestones: any[]; bugs: any[]
-  myRole: WorkspaceRole
-  onPush: (type: string, data: any, extra?: any) => void
-  onPop: () => void
-  onGoTo: (i: number) => void
-  onClose: () => void
-  onUpdateRunResult: (runId: string, caseId: string, status: RunStatus) => void
-  onViewBug: (b: any) => void
-  onShowComment?: (runId: string, caseId: string, status: RunStatus) => void
+  stack: Array<{type: string; data: any; extra?: any}>; cases: any[]; sections: any[]; sprints: any[]; testPlans: any[]; runs: any[]; milestones: any[]; bugs: any[]; myRole: WorkspaceRole; onPush: (type: string, data: any, extra?: any) => void; onPop: () => void; onGoTo: (i: number) => void; onClose: () => void; onUpdateRunResult: (runId: string, caseId: string, status: RunStatus) => void; onViewBug: (b: any) => void; onShowComment?: (runId: string, caseId: string, status: RunStatus) => void
 }) {
   const current = stack[stack.length - 1]
 
-  const stColors: Record<string, {bg:string;color:string}> = {
-    pass: {bg:'#dcfce7',color:'#15803d'},
-    fail: {bg:'#fee2e2',color:'#dc2626'},
-    skip: {bg:'#fef9c3',color:'#ca8a04'},
-    untested: {bg:'#f3f4f6',color:'#6b7280'},
-  }
-  const milestoneStatusCfg: Record<string, {bg:string;color:string;label:string}> = {
-    open: {bg:'#f3f4f6',color:'#374151',label:'Open'},
-    in_progress: {bg:'#dbeafe',color:'#1e40af',label:'In Progress'},
-    closed: {bg:'#d1fae5',color:'#065f46',label:'Closed'},
-  }
-  const sprintStatusCfg: Record<string, {bg:string;color:string;label:string}> = {
-    planned: {bg:'#f3f4f6',color:'#374151',label:'Planned'},
-    active: {bg:'#dcfce7',color:'#15803d',label:'Active'},
-    completed: {bg:'#dbeafe',color:'#1e40af',label:'Completed'},
-  }
-  const priorityCfg: Record<string, {bg:string;color:string}> = {
-    high: {bg:'#fef2f2',color:'#dc2626'},
-    medium: {bg:'#fffbeb',color:'#d97706'},
-    low: {bg:'#f0fdf4',color:'#16a34a'},
-  }
-
-  const typeLabel: Record<string, string> = {
-    milestone: '🎯 Milestone', sprint: '🏃 Sprint', plan: '📋 Test Plan',
-    case: '🧪 Test Case', run: '▶ Test Run', runcase: '🧪 Test Case',
-  }
+  const stColors: Record<string, {bg:string;color:string}> = { pass: {bg:'#dcfce7',color:'#15803d'}, fail: {bg:'#fee2e2',color:'#dc2626'}, skip: {bg:'#fef9c3',color:'#ca8a04'}, untested: {bg:'#f3f4f6',color:'#6b7280'} }
+  const milestoneStatusCfg: Record<string, {bg:string;color:string;label:string}> = { open: {bg:'#f3f4f6',color:'#374151',label:'Open'}, in_progress: {bg:'#dbeafe',color:'#1e40af',label:'In Progress'}, closed: {bg:'#d1fae5',color:'#065f46',label:'Closed'} }
+  const sprintStatusCfg: Record<string, {bg:string;color:string;label:string}> = { planned: {bg:'#f3f4f6',color:'#374151',label:'Planned'}, active: {bg:'#dcfce7',color:'#15803d',label:'Active'}, completed: {bg:'#dbeafe',color:'#1e40af',label:'Completed'} }
+  const priorityCfg: Record<string, {bg:string;color:string}> = { high: {bg:'#fef2f2',color:'#dc2626'}, medium: {bg:'#fffbeb',color:'#d97706'}, low: {bg:'#f0fdf4',color:'#16a34a'} }
+  const typeLabel: Record<string, string> = { milestone: '🎯 Milestone', sprint: '🏃 Sprint', plan: '📋 Test Plan', case: '🧪 Test Case', run: '▶ Test Run', runcase: '🧪 Test Case', bug: '🐛 Bug' }
 
   const renderContent = () => {
     const { type, data, extra } = current
 
-    // ── MILESTONE ──
     if (type === 'milestone') {
       const linkedSprints = sprints.filter(s => s.milestone_id === data.id)
-      const msc = milestoneStatusCfg[data.status]
+      const msc = milestoneStatusCfg[data.status] || milestoneStatusCfg.open
       return (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
@@ -1074,14 +843,11 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
             <p style={sectionLabel}>Sprints ({linkedSprints.length})</p>
             {linkedSprints.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No sprints linked to this milestone.</p>}
             {linkedSprints.map((s, i) => {
-              const sc = sprintStatusCfg[s.status]
+              const sc = sprintStatusCfg[s.status] || sprintStatusCfg.planned
               const planCount = testPlans.filter(p => p.sprint_id === s.id).length
               return (
                 <DDCard key={s.id} onClick={() => onPush('sprint', s)} last={i === linkedSprints.length - 1}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{s.name}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{planCount} test plan{planCount !== 1 ? 's' : ''}{s.start_date ? ` · ${new Date(s.start_date).toLocaleDateString()}` : ''}</p>
-                  </div>
+                  <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{s.name}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{planCount} test plan{planCount !== 1 ? 's' : ''}{s.start_date ? ` · ${new Date(s.start_date).toLocaleDateString()}` : ''}</p></div>
                   <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{sc.label}</span>
                   <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
                 </DDCard>
@@ -1092,12 +858,11 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
       )
     }
 
-    // ── SPRINT ──
     if (type === 'sprint') {
       const sprintPlans = testPlans.filter(p => p.sprint_id === data.id)
       const sprintRuns = runs.filter(r => r.sprint_id === data.id)
       const milestone = milestones.find(m => m.id === data.milestone_id)
-      const sc = sprintStatusCfg[data.status]
+      const sc = sprintStatusCfg[data.status] || sprintStatusCfg.planned
       return (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -1116,10 +881,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
             {sprintPlans.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No test plans in this sprint.</p>}
             {sprintPlans.map((plan, i) => (
               <DDCard key={plan.id} onClick={() => onPush('plan', plan)} last={i === sprintPlans.length - 1}>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>📋 {plan.name}</p>
-                  {plan.description && <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{plan.description}</p>}
-                </div>
+                <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>📋 {plan.name}</p>{plan.description && <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{plan.description}</p>}</div>
                 <span style={{ fontSize: 11, color: '#9ca3af' }}>{plan.case_ids.length} cases</span>
                 <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
               </DDCard>
@@ -1134,10 +896,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
                 const pct = run.case_ids.length ? Math.round((passed / run.case_ids.length) * 100) : 0
                 return (
                   <DDCard key={run.id} onClick={() => onPush('run', run)} last={i === sprintRuns.length - 1}>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>▶ {run.name}</p>
-                      <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{run.case_ids.length} cases · {pct}% passed</p>
-                    </div>
+                    <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>▶ {run.name}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{run.case_ids.length} cases · {pct}% passed</p></div>
                     <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
                   </DDCard>
                 )
@@ -1171,7 +930,6 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
       )
     }
 
-    // ── TEST PLAN ──
     if (type === 'plan') {
       const planCases = cases.map(c => ({...c, sectionName: sections.find(s => s.id === c.section_id)?.name || ''})).filter(c => data.case_ids.includes(c.id))
       return (
@@ -1185,10 +943,7 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
               const pc = priorityCfg[tc.priority]
               return (
                 <DDCard key={tc.id} onClick={() => onPush('case', tc, {bugs})} last={i === planCases.length - 1}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName} · {tc.type}</p>
-                  </div>
+                  <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName} · {tc.type}</p></div>
                   <span style={{ background: pc.bg, color: pc.color, fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
                   <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
                 </DDCard>
@@ -1199,31 +954,18 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
       )
     }
 
-    // ── TEST CASE ──
     if (type === 'case' || type === 'runcase') {
-      const pc = priorityCfg[data.priority]
+      const pc = priorityCfg[data.priority] || priorityCfg.medium
       const runResults = extra?.results
       const runId = extra?.runId
-      // Only show bugs when coming from run/plan context (extra.bugs set), not Test Cases tab
       const showBugs = extra?.bugs !== undefined
       const linkedBugs = showBugs ? (extra.bugs as any[]).filter((b: any) => {
         const matchesCase = b.test_case_id === data.id
         if (extra?.runId) return matchesCase && b.test_run_id === extra.runId
         return matchesCase
       }) : []
-      const stCfg: Record<string, {bg:string;color:string;label:string}> = {
-        open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},
-        in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},
-        resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},
-        closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},
-        wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"},
-      }
-      const sevCfg: Record<string, {bg:string;color:string}> = {
-        critical:{bg:'#fef2f2',color:'#b91c1c'},
-        high:{bg:'#fff7ed',color:'#c2410c'},
-        medium:{bg:'#fffbeb',color:'#d97706'},
-        low:{bg:'#f0fdf4',color:'#15803d'},
-      }
+      const stCfg: Record<string, {bg:string;color:string;label:string}> = { open:{bg:'#fef2f2',color:'#dc2626',label:'Open'}, in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'}, resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'}, closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'}, wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"} }
+      const sevCfg: Record<string, {bg:string;color:string}> = { critical:{bg:'#fef2f2',color:'#b91c1c'}, high:{bg:'#fff7ed',color:'#c2410c'}, medium:{bg:'#fffbeb',color:'#d97706'}, low:{bg:'#f0fdf4',color:'#15803d'} }
       return (
         <div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -1234,27 +976,22 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
           {runResults && (
             <div style={{ marginBottom: 16 }}>
               <p style={sectionLabel}>Current Status</p>
-              <span style={{ background: stColors[runResults[data.id] || 'untested'].bg, color: stColors[runResults[data.id] || 'untested'].color, fontSize: 13, fontWeight: 600, padding: '4px 12px', borderRadius: 6 }}>
-                {runResults[data.id] || 'untested'}
-              </span>
+              <span style={{ background: stColors[runResults[data.id] || 'untested'].bg, color: stColors[runResults[data.id] || 'untested'].color, fontSize: 13, fontWeight: 600, padding: '4px 12px', borderRadius: 6 }}>{runResults[data.id] || 'untested'}</span>
             </div>
           )}
           {data.sectionName && <DDRow label="Section" value={data.sectionName} />}
           {data.description && <DDRow label="Description" value={data.description} />}
           {data.steps && <DDRow label="Steps to reproduce" value={<pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13, color: '#374151' }}>{data.steps}</pre>} />}
           {data.expected_result && <DDRow label="Expected result" value={data.expected_result} />}
-          {/* Linked bugs — only shown from run/plan context */}
           {showBugs && <div style={{ marginTop: 8 }}>
             <p style={sectionLabel}>Linked bugs ({linkedBugs.length})</p>
             {linkedBugs.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No bugs linked to this test case.</p>}
             {linkedBugs.map((bug: any, i: number) => {
-              const sc = sevCfg[bug.severity]
-              const bc = stCfg[bug.status]
+              const sc = sevCfg[bug.severity] || sevCfg.medium
+              const bc = stCfg[bug.status] || stCfg.open
               return (
                 <DDCard key={bug.id} onClick={() => onViewBug(bug)} last={i === linkedBugs.length - 1}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>🐛 {bug.title}</p>
-                  </div>
+                  <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>🐛 {bug.title}</p></div>
                   <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bug.severity}</span>
                   <span style={{ background: bc.bg, color: bc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bc.label}</span>
                   <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
@@ -1280,7 +1017,6 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
       )
     }
 
-    // ── TEST RUN ──
     if (type === 'run') {
       const runCases = cases.map(c => ({...c, sectionName: sections.find(s => s.id === c.section_id)?.name || ''})).filter(c => data.case_ids.includes(c.id))
       const res = data.results || {}
@@ -1299,28 +1035,20 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
           <div style={{ marginBottom: 16 }}>
             <p style={sectionLabel}>Progress</p>
             <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 13 }}>
-              <span style={{ color: '#15803d' }}>✓ {passed} pass</span>
-              <span style={{ color: '#dc2626' }}>✗ {failed} fail</span>
-              <span style={{ color: '#ca8a04' }}>— {skipped} skip</span>
-              <span style={{ color: '#9ca3af' }}>• {untested} untested</span>
+              <span style={{ color: '#15803d' }}>✓ {passed} pass</span><span style={{ color: '#dc2626' }}>✗ {failed} fail</span><span style={{ color: '#ca8a04' }}>— {skipped} skip</span><span style={{ color: '#9ca3af' }}>• {untested} untested</span>
             </div>
-            <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: '#16a34a' }} />
-            </div>
+            <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}><div style={{ width: `${pct}%`, height: '100%', background: '#16a34a' }} /></div>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>{pct}% complete</p>
           </div>
           <p style={sectionLabel}>Test Cases ({runCases.length})</p>
           {runCases.map((tc, i) => {
             const st = res[tc.id] || 'untested'
             const sc = stColors[st]
-            const pc = priorityCfg[tc.priority]
+            const pc = priorityCfg[tc.priority] || priorityCfg.medium
             const tcBugs = bugs.filter((b: any) => b.test_case_id === tc.id)
             return (
               <DDCard key={tc.id} onClick={() => onPush('runcase', tc, {results: res, runId: data.id, bugs})} last={i === runCases.length - 1}>
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p>
-                  <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}{tcBugs.length > 0 ? ` · 🐛 ${tcBugs.length} bug${tcBugs.length !== 1 ? 's' : ''}` : ''}</p>
-                </div>
+                <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}{tcBugs.length > 0 ? ` · 🐛 ${tcBugs.length} bug${tcBugs.length !== 1 ? 's' : ''}` : ''}</p></div>
                 <span style={{ background: pc.bg, color: pc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{tc.priority}</span>
                 <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{st}</span>
                 <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
@@ -1354,24 +1082,12 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
       )
     }
 
-    // ── BUG ──
     if (type === 'bug') {
       const sprint = sprints.find(s => s.id === data.sprint_id)
       const run = runs.find(r => r.id === data.test_run_id)
       const tc = cases.find(c => c.id === data.test_case_id)
-      const sevCfgB: Record<string, {bg:string;color:string;label:string}> = {
-        critical:{bg:'#fef2f2',color:'#b91c1c',label:'Critical'},
-        high:{bg:'#fff7ed',color:'#c2410c',label:'High'},
-        medium:{bg:'#fffbeb',color:'#d97706',label:'Medium'},
-        low:{bg:'#f0fdf4',color:'#15803d',label:'Low'},
-      }
-      const stCfgB: Record<string, {bg:string;color:string;label:string}> = {
-        open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},
-        in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},
-        resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},
-        closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},
-        wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"},
-      }
+      const sevCfgB: Record<string, {bg:string;color:string;label:string}> = { critical:{bg:'#fef2f2',color:'#b91c1c',label:'Critical'}, high:{bg:'#fff7ed',color:'#c2410c',label:'High'}, medium:{bg:'#fffbeb',color:'#d97706',label:'Medium'}, low:{bg:'#f0fdf4',color:'#15803d',label:'Low'} }
+      const stCfgB: Record<string, {bg:string;color:string;label:string}> = { open:{bg:'#fef2f2',color:'#dc2626',label:'Open'}, in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'}, resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'}, closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'}, wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"} }
       const sc = sevCfgB[data.severity] || sevCfgB.medium
       const bc = stCfgB[data.status] || stCfgB.open
       const imgs = (data.attachments||[]).filter((u: string) => !u.match(/\.(mp4|webm|mov)$/i))
@@ -1393,20 +1109,14 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
             <div style={{ marginBottom: 16 }}>
               <p style={sectionLabel}>Screenshots ({imgs.length})</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 8 }}>
-                {imgs.map((url: string, i: number) => (
-                  <a key={i} href={url} target="_blank" rel="noreferrer">
-                    <img src={url} alt={`screenshot-${i+1}`} style={{ width:'100%', height:90, objectFit:'cover', borderRadius:6, border:'1px solid #e5e7eb', display:'block' }} />
-                  </a>
-                ))}
+                {imgs.map((url: string, i: number) => <a key={i} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`screenshot-${i+1}`} style={{ width:'100%', height:90, objectFit:'cover', borderRadius:6, border:'1px solid #e5e7eb', display:'block' }} /></a>)}
               </div>
             </div>
           )}
           {vids.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <p style={sectionLabel}>Videos ({vids.length})</p>
-              {vids.map((url: string, i: number) => (
-                <video key={i} src={url} controls style={{ width:'100%', borderRadius:6, marginBottom:6 }} />
-              ))}
+              {vids.map((url: string, i: number) => <video key={i} src={url} controls style={{ width:'100%', borderRadius:6, marginBottom:6 }} />)}
             </div>
           )}
           <InlineComments entityId={data.id} entityType="bug" />
@@ -1419,13 +1129,9 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex' }}>
-      {/* Overlay */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={onClose} />
-      {/* Panel */}
       <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 520, background: '#fff', display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)' }}>
-        {/* Breadcrumb header */}
         <div style={{ padding: '0 20px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb', flexShrink: 0 }}>
-          {/* Breadcrumb trail */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '10px 0 0', flexWrap: 'wrap' }}>
             <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', fontFamily: 'inherit', padding: '2px 4px' }}>Project</button>
             {stack.map((entry, i) => (
@@ -1438,13 +1144,10 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
               </span>
             ))}
           </div>
-          {/* Current title + back */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {stack.length > 1 && (
-                <button onClick={onPop} style={{ background: 'none', border: '1px solid #e5e7eb', cursor: 'pointer', borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#6b7280', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  ← Back
-                </button>
+                <button onClick={onPop} style={{ background: 'none', border: '1px solid #e5e7eb', cursor: 'pointer', borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#6b7280', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>← Back</button>
               )}
               <div>
                 <span style={{ fontSize: 11, color: '#9ca3af' }}>{typeLabel[current.type]}</span>
@@ -1454,16 +1157,12 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
             <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>
           </div>
         </div>
-        {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-          {renderContent()}
-        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>{renderContent()}</div>
       </div>
     </div>
   )
 }
 
-// DrillDown helper components
 function DDRow({ label, value }: { label: string; value?: React.ReactNode }) {
   if (!value) return null
   return (
@@ -1477,8 +1176,7 @@ function DDRow({ label, value }: { label: string; value?: React.ReactNode }) {
 function DDCard({ children, onClick, last }: { children: React.ReactNode; onClick: () => void; last?: boolean }) {
   const [hovered, setHovered] = useState(false)
   return (
-    <div onClick={onClick}
-      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+    <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: last ? 0 : 6, background: hovered ? '#f9fafb' : '#fff', transition: 'background 0.1s' }}>
       {children}
     </div>
@@ -1487,15 +1185,10 @@ function DDCard({ children, onClick, last }: { children: React.ReactNode; onClic
 
 const sectionLabel: React.CSSProperties = { margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }
 const linkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline' }
-const bugLinkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline', textAlign: 'left' as const }
 
-// ─── Fail Comment Modal ───────────────────────────────────────────────────────
 function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, runs, cases, members, onConfirm, onClose }: {
-  status: RunStatus; runId: string; caseId: string
-  allBugs: any[]; projectId: string; sprints: any[]; runs: any[]; cases: any[]
-  members?: any[]
-  onConfirm: (comment: string, bugId?: string) => void
-  onClose: () => void
+  status: RunStatus; runId: string; caseId: string; allBugs: any[]; projectId: string; sprints: any[]; runs: any[]; cases: any[]; members?: any[];
+  onConfirm: (comment: string, bugId?: string) => void; onClose: () => void
 }) {
   const [comment, setComment] = useState('')
   const [bugAction, setBugAction] = useState<'none' | 'link' | 'create'>('none')
@@ -1513,46 +1206,25 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
   const sb = createClient()
 
   const sc = ({pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}} as any)[status]
-
-  // Filter bugs by search
-  const filteredBugs = allBugs.filter(b => {
-    const q = bugSearch.toLowerCase()
-    return b.title.toLowerCase().includes(q) || b.id.slice(0,8).toUpperCase().includes(q.toUpperCase())
-  }).slice(0, 10)
+  const filteredBugs = allBugs.filter(b => { const q = bugSearch.toLowerCase(); return b.title.toLowerCase().includes(q) || b.id.slice(0,8).toUpperCase().includes(q.toUpperCase()) }).slice(0, 10)
 
   const handleConfirm = async () => {
     setCreating(true)
     let bugId = selectedBugId || undefined
-
-    // Link existing bug — update its test_run_id and test_case_id
     if (bugAction === 'link' && selectedBugId) {
-      await sb.from('bugs').update({
-        test_run_id: runId,
-        test_case_id: caseId,
-      }).eq('id', selectedBugId)
+      await sb.from('bugs').update({ test_run_id: runId, test_case_id: caseId }).eq('id', selectedBugId)
       bugId = selectedBugId
     }
-
-    // Create new bug if needed
     if (bugAction === 'create' && newBugTitle.trim()) {
       const { data: { session } } = await sb.auth.getSession()
       const { data: newBug } = await sb.from('bugs').insert({
-        title: newBugTitle.trim(),
-        description: newBugDescription.trim() || comment.trim(),
-        steps: newBugSteps.trim(),
-        expected_result: newBugExpected.trim(),
-        actual_result: newBugActual.trim(),
-        severity: newBugSeverity,
-        status: newBugStatus,
-        priority: newBugPriority,
-        project_id: projectId,
-        test_run_id: runId,
-        test_case_id: caseId,
-        created_by: session?.user?.id,
+        title: newBugTitle.trim(), description: newBugDescription.trim() || comment.trim(), steps: newBugSteps.trim(),
+        expected_result: newBugExpected.trim(), actual_result: newBugActual.trim(),
+        severity: newBugSeverity, status: newBugStatus, priority: newBugPriority,
+        project_id: projectId, test_run_id: runId, test_case_id: caseId, created_by: session?.user?.id,
       }).select().single()
       bugId = newBug?.id
     }
-
     onConfirm(comment, bugId)
     setCreating(false)
   }
@@ -1561,51 +1233,28 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: 16 }}>
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>
-            Mark as {status === 'pass' ? '✓ Pass' : status === 'fail' ? '✗ Fail' : '— Skip'}
-          </span>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Mark as {status === 'pass' ? '✓ Pass' : status === 'fail' ? '✗ Fail' : '— Skip'}</span>
           <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{status}</span>
         </div>
-
         <div style={{ padding: 20 }}>
-          {/* Comment */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>
-              Comment <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span>
-            </label>
-            <MentionInput
-              value={comment}
-              onChange={setComment}
-              members={members || []}
-              placeholder="e.g. Failed on Chrome only... type @ to mention"
-              rows={3}
-            />
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>Comment <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span></label>
+            <MentionInput value={comment} onChange={setComment} members={members || []} placeholder="e.g. Failed on Chrome only... type @ to mention" rows={3} />
           </div>
-
-          {/* Bug linking — only for fail */}
           {status === 'fail' && (
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 8 }}>Bug (optional)</label>
               <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-                <button onClick={() => setBugAction('none')}
-                  style={{ flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6, border: `1px solid ${bugAction === 'none' ? '#111' : '#d1d5db'}`, background: bugAction === 'none' ? '#111' : '#fff', color: bugAction === 'none' ? '#fff' : '#374151', fontWeight: bugAction === 'none' ? 600 : 400 }}>
-                  No bug
-                </button>
-                <button onClick={() => setBugAction('link')}
-                  style={{ flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6, border: `1px solid ${bugAction === 'link' ? '#2563eb' : '#d1d5db'}`, background: bugAction === 'link' ? '#eff6ff' : '#fff', color: bugAction === 'link' ? '#2563eb' : '#374151', fontWeight: bugAction === 'link' ? 600 : 400 }}>
-                  Link existing
-                </button>
-                <button onClick={() => setBugAction('create')}
-                  style={{ flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6, border: `1px solid ${bugAction === 'create' ? '#dc2626' : '#d1d5db'}`, background: bugAction === 'create' ? '#fef2f2' : '#fff', color: bugAction === 'create' ? '#dc2626' : '#374151', fontWeight: bugAction === 'create' ? 600 : 400 }}>
-                  + New bug
-                </button>
+                {(['none','link','create'] as const).map(action => (
+                  <button key={action} onClick={() => setBugAction(action)}
+                    style={{ flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6, border: `1px solid ${bugAction === action ? (action === 'create' ? '#dc2626' : action === 'link' ? '#2563eb' : '#111') : '#d1d5db'}`, background: bugAction === action ? (action === 'create' ? '#fef2f2' : action === 'link' ? '#eff6ff' : '#111') : '#fff', color: bugAction === action ? (action === 'create' ? '#dc2626' : action === 'link' ? '#2563eb' : '#fff') : '#374151', fontWeight: bugAction === action ? 600 : 400 }}>
+                    {action === 'none' ? 'No bug' : action === 'link' ? 'Link existing' : '+ New bug'}
+                  </button>
+                ))}
               </div>
-
-              {/* Link existing bug */}
               {bugAction === 'link' && (
                 <div>
-                  <input value={bugSearch} onChange={e => { setBugSearch(e.target.value); setSelectedBugId('') }}
-                    placeholder="Search by title or ID..."
+                  <input value={bugSearch} onChange={e => { setBugSearch(e.target.value); setSelectedBugId('') }} placeholder="Search by title or ID..."
                     style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, marginBottom: 8 }} />
                   <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 7 }}>
                     {filteredBugs.length === 0 && <p style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', margin: 0 }}>No bugs found</p>}
@@ -1615,10 +1264,7 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
                       return (
                         <div key={bug.id} onClick={() => setSelectedBugId(bug.id)}
                           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', background: selectedBugId === bug.id ? '#eff6ff' : '#fff' }}>
-                          <div style={{ flex: 1 }}>
-                            <p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: selectedBugId === bug.id ? 600 : 400 }}>🐛 {bug.title}</p>
-                            <p style={{ margin: 0, fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>{bug.id.slice(0,8).toUpperCase()}</p>
-                          </div>
+                          <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: selectedBugId === bug.id ? 600 : 400 }}>🐛 {bug.title}</p><p style={{ margin: 0, fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>{bug.id.slice(0,8).toUpperCase()}</p></div>
                           <span style={{ fontSize: 10, color: sevC[bug.severity], fontWeight: 600 }}>{bug.severity}</span>
                           <span style={{ fontSize: 10, color: stC[bug.status], fontWeight: 600 }}>{bug.status.replace('_',' ')}</span>
                           {selectedBugId === bug.id && <span style={{ color: '#2563eb', fontSize: 14 }}>✓</span>}
@@ -1629,77 +1275,44 @@ function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, 
                   {selectedBugId && <p style={{ fontSize: 12, color: '#2563eb', margin: '6px 0 0' }}>✓ Bug selected</p>}
                 </div>
               )}
-
-              {/* Create new bug — full form */}
               {bugAction === 'create' && (
                 <div style={{ border: '1px solid #fecaca', borderRadius: 8, padding: 14, background: '#fff5f5' }}>
                   <div style={{ marginBottom: 10 }}>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Title *</label>
-                    <input value={newBugTitle} onChange={e => setNewBugTitle(e.target.value)}
-                      placeholder="Brief summary of the bug"
+                    <input value={newBugTitle} onChange={e => setNewBugTitle(e.target.value)} placeholder="Brief summary of the bug"
                       style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, background: '#fff' }} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Severity</label>
-                      <select value={newBugSeverity} onChange={e => setNewBugSeverity(e.target.value)}
-                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 8px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }}>
-                        <option value="critical">Critical</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Priority</label>
-                      <select value={newBugPriority} onChange={e => setNewBugPriority(e.target.value)}
-                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 8px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }}>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Status</label>
-                      <select value={newBugStatus} onChange={e => setNewBugStatus(e.target.value)}
-                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 8px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }}>
-                        <option value="open">Open</option>
-                        <option value="in_progress">In Progress</option>
-                      </select>
-                    </div>
+                    {[['Severity', newBugSeverity, setNewBugSeverity, ['critical','high','medium','low']], ['Priority', newBugPriority, setNewBugPriority, ['high','medium','low']], ['Status', newBugStatus, setNewBugStatus, ['open','in_progress']]].map(([label, val, setter, opts]: any) => (
+                      <div key={label}>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>{label}</label>
+                        <select value={val} onChange={e => setter(e.target.value)} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 8px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }}>
+                          {opts.map((o: string) => <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1).replace('_',' ')}</option>)}
+                        </select>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Description</label>
-                    <textarea value={newBugDescription} onChange={e => setNewBugDescription(e.target.value)}
-                      placeholder="What went wrong?"
-                      rows={2} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
-                  </div>
-                  <div style={{ marginBottom: 10 }}>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Steps to reproduce</label>
-                    <textarea value={newBugSteps} onChange={e => setNewBugSteps(e.target.value)}
-                      placeholder="1. Go to... 2. Click... 3. Observe..."
-                      rows={3} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
-                  </div>
+                  {[['Description', newBugDescription, setNewBugDescription, 'What went wrong?', 2], ['Steps to reproduce', newBugSteps, setNewBugSteps, '1. Go to... 2. Click... 3. Observe...', 3]].map(([label, val, setter, ph, rows]: any) => (
+                    <div key={label} style={{ marginBottom: 10 }}>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>{label}</label>
+                      <textarea value={val} onChange={e => setter(e.target.value)} placeholder={ph} rows={rows}
+                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
+                    </div>
+                  ))}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Expected result</label>
-                      <textarea value={newBugExpected} onChange={e => setNewBugExpected(e.target.value)}
-                        placeholder="What should happen?"
-                        rows={2} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Actual result</label>
-                      <textarea value={newBugActual} onChange={e => setNewBugActual(e.target.value)}
-                        placeholder="What actually happened?"
-                        rows={2} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
-                    </div>
+                    {[['Expected result', newBugExpected, setNewBugExpected, 'What should happen?'], ['Actual result', newBugActual, setNewBugActual, 'What actually happened?']].map(([label, val, setter, ph]: any) => (
+                      <div key={label}>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>{label}</label>
+                        <textarea value={val} onChange={e => setter(e.target.value)} placeholder={ph} rows={2}
+                          style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
+                      </div>
+                    ))}
                   </div>
                   <p style={{ fontSize: 11, color: '#9ca3af', margin: '8px 0 0' }}>Bug will be linked to this test case and run automatically.</p>
                 </div>
               )}
             </div>
           )}
-
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <button onClick={onClose} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
             <button onClick={handleConfirm} disabled={creating || (bugAction === 'create' && !newBugTitle.trim())}
