@@ -16,13 +16,13 @@ export default function InlineComments({ entityId, entityType, mentionMembers = 
   const [submitting, setSubmitting] = useState(false)
   const sb = createClient()
 
+  const table = entityType === 'test_case' ? 'test_case_comments' : 'bug_comments'
+  const fkCol = entityType === 'test_case' ? 'test_case_id' : 'bug_id'
+
   // Use window fallback for members if prop is empty
   const members = mentionMembers.length > 0
     ? mentionMembers
     : (typeof window !== 'undefined' ? (window as any).__testflow_members || [] : [])
-
-  const table = entityType === 'test_case' ? 'test_case_comments' : 'bug_comments'
-  const fkCol = entityType === 'test_case' ? 'test_case_id' : 'bug_id'
 
   useEffect(() => {
     if (!entityId) return
@@ -47,23 +47,34 @@ export default function InlineComments({ entityId, entityType, mentionMembers = 
     }).select().single()
     if (comment) setComments(p => [...p, comment])
 
-    // Send mention notifications
+    // Send mention notifications with correct redirect link
     if (newComment.includes('@') && session) {
       try {
-        const { data: entity } = await sb.from(
-          entityType === 'test_case' ? 'test_cases' : 'bugs'
-        ).select('project_id').eq('id', entityId).single()
-        if (entity) {
-          const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', entity.project_id).single()
+        // Get project_id for this entity
+        let projectId = ''
+        let redirectLink = window.location.pathname
+
+        if (entityType === 'test_case') {
+          const { data: tc } = await sb.from('test_cases').select('project_id').eq('id', entityId).single()
+          projectId = tc?.project_id || ''
+          redirectLink = `/dashboard/${projectId}?open=case&id=${entityId}`
+        } else {
+          const { data: bug } = await sb.from('bugs').select('project_id').eq('id', entityId).single()
+          projectId = bug?.project_id || ''
+          redirectLink = `/dashboard/${projectId}?open=bug&id=${entityId}`
+        }
+
+        if (projectId) {
+          const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
           if (proj) {
             await fetch('/api/notifications', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 text: newComment,
-                projectId: entity.project_id,
+                projectId,
                 type: 'mention',
-                link: window.location.pathname,
+                link: redirectLink,
                 createdBy: session.user.id,
                 workspaceId: proj.workspace_id,
               }),
@@ -90,7 +101,6 @@ export default function InlineComments({ entityId, entityType, mentionMembers = 
         Comments ({comments.length})
       </p>
 
-      {/* Existing comments */}
       {loading ? (
         <p style={{ fontSize: 12, color: '#9ca3af' }}>Loading…</p>
       ) : (
@@ -115,7 +125,6 @@ export default function InlineComments({ entityId, entityType, mentionMembers = 
         </div>
       )}
 
-      {/* New comment input */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <MentionInput
           value={newComment}
@@ -123,7 +132,7 @@ export default function InlineComments({ entityId, entityType, mentionMembers = 
           members={members}
           placeholder="Add a comment… type @ to mention"
           rows={2}
-          onKeyDown={(e) => {
+          onKeyDown={(e: any) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               submitComment()
