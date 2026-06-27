@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
 import MentionInput from '@/components/MentionInput'
 import AttachmentUploader, { type Attachment } from '@/components/AttachmentUploader'
-import type { Bug, BugSeverity, BugStatus, Priority, WorkspaceRole } from '@/types'
+import type { Bug, BugSeverity, BugStatus, Priority } from '@/types'
 
 const SEVERITY_CFG: Record<BugSeverity, {label:string;bg:string;color:string}> = {
   critical: {label:'Critical', bg:'#fef2f2', color:'#b91c1c'},
@@ -24,12 +24,15 @@ const PRIORITY_CFG: Record<Priority, {label:string;bg:string;color:string}> = {
   low:    {label:'Low',    bg:'#f0fdf4', color:'#15803d'},
 }
 
+// Workflow order for pipeline display
+const WORKFLOW: BugStatus[] = ['open', 'in_progress', 'resolved', 'closed']
+
 function SeverityBadge({ s }: { s: BugSeverity }) {
-  const c = SEVERITY_CFG[s]
+  const c = SEVERITY_CFG[s] || SEVERITY_CFG.medium
   return <span style={{ background: c.bg, color: c.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{c.label}</span>
 }
 function StatusBadge({ s }: { s: BugStatus }) {
-  const c = STATUS_CFG[s]
+  const c = STATUS_CFG[s] || STATUS_CFG.open
   return <span style={{ background: c.bg, color: c.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{c.label}</span>
 }
 
@@ -71,13 +74,17 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
   const [editing, setEditing] = useState<Bug | null>(null)
   const [filterStatus, setFilterStatus] = useState('')
   const [filterSeverity, setFilterSeverity] = useState('')
+  const [filterAssignee, setFilterAssignee] = useState('')
   const [search, setSearch] = useState('')
+  const [savingStatus, setSavingStatus] = useState<string | null>(null)
   const sb = createClient()
 
   const emptyForm = {
     title: '', description: '', steps: '', expected_result: '', actual_result: '',
     severity: 'medium' as BugSeverity, status: 'open' as BugStatus, priority: 'medium' as Priority,
-    sprint_id: '', test_run_id: '', test_case_id: '', attachments: [] as Attachment[],
+    sprint_id: '', test_run_id: '', test_case_id: '',
+    assigned_to: '',
+    attachments: [] as Attachment[],
   }
   const [form, setForm] = useState(emptyForm)
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }))
@@ -85,11 +92,12 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
   const openCreate = () => { setForm(emptyForm); setEditing(null); setShowModal(true) }
   const openEdit = (b: Bug) => {
     setForm({
-      title: b.title, description: b.description, steps: b.steps,
-      expected_result: b.expected_result, actual_result: b.actual_result,
+      title: b.title, description: b.description || '', steps: b.steps || '',
+      expected_result: b.expected_result || '', actual_result: b.actual_result || '',
       severity: b.severity, status: b.status, priority: b.priority,
       sprint_id: b.sprint_id || '', test_run_id: b.test_run_id || '',
       test_case_id: b.test_case_id || '',
+      assigned_to: (b as any).assigned_to || '',
       attachments: (b.attachments || []).map((url, i) => ({
         url, name: `attachment-${i+1}`,
         type: (url.match(/\.(mp4|webm|mov)$/i) ? 'video' : 'image') as 'image' | 'video',
@@ -98,35 +106,76 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
     setEditing(b); setShowModal(true)
   }
 
+  const getMemberName = (userId: string) => {
+    const m = members.find((m: any) => m.id === userId)
+    return m ? (m.name || m.email) : 'Unknown'
+  }
+
   const save = async () => {
     if (!form.title.trim()) return
     const { data: { session } } = await sb.auth.getSession()
-    const payload = {
+    const prevAssignee = editing ? (editing as any).assigned_to : null
+    const newAssignee = form.assigned_to || null
+    const assigneeChanged = prevAssignee !== newAssignee && newAssignee
+
+    const payload: any = {
       title: form.title.trim(), description: form.description, steps: form.steps,
       expected_result: form.expected_result, actual_result: form.actual_result,
       severity: form.severity, status: form.status, priority: form.priority,
       project_id: projectId,
       sprint_id: form.sprint_id || null, test_run_id: form.test_run_id || null,
       test_case_id: form.test_case_id || null,
+      assigned_to: newAssignee,
       attachments: form.attachments.map(a => a.url),
       created_by: session?.user?.id,
     }
+    if (assigneeChanged) payload.assigned_at = new Date().toISOString()
 
     let bugId = editing?.id || ''
     if (editing) {
       await sb.from('bugs').update(payload).eq('id', editing.id)
     } else {
-      // Get the new bug's ID for the notification link
       const { data: newBug } = await sb.from('bugs').insert(payload).select().single()
       bugId = newBug?.id || ''
     }
 
-    // Send mention notifications with correct redirect link
+    // Send notification to assignee if changed
+    if (assigneeChanged && session && bugId) {
+      try {
+        const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+        if (proj) {
+          // In-app notification
+          await sb.from('notifications').insert({
+            user_id: newAssignee,
+            type: 'bug_assigned',
+            title: 'Bug assigned to you',
+            body: form.title.trim(),
+            link: `/dashboard/${projectId}?open=bug&id=${bugId}`,
+            project_id: projectId,
+            created_by: session.user.id,
+          })
+          // Also send @mention style notification via API for email
+          await fetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: `@${getMemberName(newAssignee)} Bug assigned: ${form.title}`,
+              projectId, type: 'bug_assigned',
+              link: `/dashboard/${projectId}?open=bug&id=${bugId}`,
+              createdBy: session.user.id,
+              workspaceId: proj.workspace_id,
+            }),
+          })
+        }
+      } catch(e) { console.error('Assignment notification error:', e) }
+    }
+
+    // Send mention notifications
     const mentionText = [form.description, form.steps, form.expected_result, form.actual_result].join(' ')
     if (mentionText.includes('@') && session && bugId) {
       try {
-        const { data: projData } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
-        if (projData) {
+        const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+        if (proj) {
           await fetch('/api/notifications', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -134,7 +183,7 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
               text: mentionText, projectId, type: 'mention',
               link: `/dashboard/${projectId}?open=bug&id=${bugId}`,
               createdBy: session.user.id,
-              workspaceId: projData.workspace_id,
+              workspaceId: proj.workspace_id,
             }),
           })
         }
@@ -142,6 +191,14 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
     }
 
     setShowModal(false); onRefresh()
+  }
+
+  // Quick status update from card
+  const updateStatus = async (bugId: string, status: BugStatus) => {
+    setSavingStatus(bugId)
+    await sb.from('bugs').update({ status }).eq('id', bugId)
+    setSavingStatus(null)
+    onRefresh()
   }
 
   const del = async (id: string) => {
@@ -154,7 +211,8 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
     const matchSearch = !search || b.title.toLowerCase().includes(search.toLowerCase())
     const matchStatus = !filterStatus || b.status === filterStatus
     const matchSeverity = !filterSeverity || b.severity === filterSeverity
-    return matchSearch && matchStatus && matchSeverity
+    const matchAssignee = !filterAssignee || (b as any).assigned_to === filterAssignee
+    return matchSearch && matchStatus && matchSeverity && matchAssignee
   })
 
   const btnStyle: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 13, background: '#fff', cursor: 'pointer' }
@@ -163,10 +221,11 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
 
   return (
     <div>
+      {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search bugs…"
-            style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 10px', fontSize: 12, outline: 'none', width: 180 }} />
+            style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 10px', fontSize: 12, outline: 'none', width: 160 }} />
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selStyle}>
             <option value="">All statuses</option>
             {Object.entries(STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -175,11 +234,19 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
             <option value="">All severities</option>
             {Object.entries(SEVERITY_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
+          {members.length > 0 && (
+            <select value={filterAssignee} onChange={e => setFilterAssignee(e.target.value)} style={selStyle}>
+              <option value="">All assignees</option>
+              <option value="unassigned">Unassigned</option>
+              {members.map((m: any) => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
+            </select>
+          )}
           <span style={{ fontSize: 12, color: '#9ca3af', alignSelf: 'center' }}>{filtered.length} bug{filtered.length !== 1 ? 's' : ''}</span>
         </div>
         {canEdit && <button onClick={openCreate} style={btnStyle}>🐛 Report bug</button>}
       </div>
 
+      {/* Empty state */}
       {bugs.length === 0 && (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <p style={{ fontSize: 32, margin: '0 0 10px' }}>🐛</p>
@@ -189,6 +256,7 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
         </div>
       )}
 
+      {/* Bug list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.map(bug => {
           const sprint = sprints.find(s => s.id === bug.sprint_id)
@@ -196,17 +264,67 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
           const tc = testCases.find(c => c.id === bug.test_case_id)
           const imgCount = (bug.attachments || []).filter(u => !u.match(/\.(mp4|webm|mov)$/i)).length
           const vidCount = (bug.attachments || []).length - imgCount
+          const assignedMember = members.find((m: any) => m.id === (bug as any).assigned_to)
+          const isSaving = savingStatus === bug.id
+
           return (
             <div key={bug.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                  {/* Title row */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
                     <button onClick={() => onViewBug(bug)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600, fontSize: 14, color: '#111', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit', textAlign: 'left' }}>
                       {bug.title}
                     </button>
                     <SeverityBadge s={bug.severity} />
                     <StatusBadge s={bug.status} />
+                    {assignedMember && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#6b7280', background: '#f3f4f6', padding: '2px 7px', borderRadius: 4 }}>
+                        <span style={{ width: 16, height: 16, borderRadius: '50%', background: '#111', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>
+                          {(assignedMember.name || assignedMember.email || 'U')[0].toUpperCase()}
+                        </span>
+                        {assignedMember.name || assignedMember.email?.split('@')[0]}
+                      </span>
+                    )}
+                    {!(bug as any).assigned_to && canEdit && (
+                      <span style={{ fontSize: 11, color: '#d1d5db' }}>Unassigned</span>
+                    )}
                   </div>
+
+                  {/* Workflow pipeline */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 6 }}>
+                    {WORKFLOW.map((s, i) => {
+                      const cfg = STATUS_CFG[s]
+                      const isCurrent = bug.status === s
+                      const isPast = WORKFLOW.indexOf(bug.status as BugStatus) > i
+                      return (
+                        <div key={s} style={{ display: 'flex', alignItems: 'center' }}>
+                          <button
+                            onClick={() => canEdit && !isSaving && updateStatus(bug.id, s)}
+                            disabled={!canEdit || isSaving}
+                            title={`Set to ${cfg.label}`}
+                            style={{
+                              padding: '2px 8px', fontSize: 11, borderRadius: 4, cursor: canEdit ? 'pointer' : 'default',
+                              border: isCurrent ? `1px solid ${cfg.color}` : '1px solid #e5e7eb',
+                              background: isCurrent ? cfg.bg : isPast ? '#f9fafb' : '#fff',
+                              color: isCurrent ? cfg.color : isPast ? '#9ca3af' : '#d1d5db',
+                              fontWeight: isCurrent ? 600 : 400,
+                              opacity: isSaving ? 0.5 : 1,
+                            }}>
+                            {cfg.label}
+                          </button>
+                          {i < WORKFLOW.length - 1 && (
+                            <div style={{ width: 16, height: 1, background: isPast || isCurrent ? '#d1d5db' : '#e5e7eb' }} />
+                          )}
+                        </div>
+                      )
+                    })}
+                    {bug.status === 'wont_fix' && (
+                      <span style={{ marginLeft: 8, fontSize: 11, background: '#faf5ff', color: '#7c3aed', padding: '2px 7px', borderRadius: 4, fontWeight: 600 }}>Won't Fix</span>
+                    )}
+                  </div>
+
+                  {/* Meta info */}
                   <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#9ca3af', flexWrap: 'wrap' }}>
                     {sprint && <span>🏃 {sprint.name}</span>}
                     {run && <span>▶ {run.name}</span>}
@@ -216,6 +334,7 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
                     <span>{new Date(bug.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
+
                 {canEdit && (
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                     <button onClick={() => openEdit(bug)} style={smBtn}>Edit</button>
@@ -228,11 +347,13 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
         })}
       </div>
 
+      {/* Create/Edit Modal */}
       {showModal && (
         <Modal title={editing ? 'Edit bug' : 'Report bug'} onClose={() => setShowModal(false)}>
           <Field label="Title" required>
             <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="Brief summary of the bug" autoFocus style={inp} />
           </Field>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
             <div>
               <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 5 }}>Severity</label>
@@ -253,6 +374,24 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
               </select>
             </div>
           </div>
+
+          {/* Assign to */}
+          {members.length > 0 && (
+            <Field label="Assign to">
+              <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} style={sel}>
+                <option value="">Unassigned</option>
+                {members.map((m: any) => (
+                  <option key={m.id} value={m.id}>{m.name || m.email}</option>
+                ))}
+              </select>
+              {form.assigned_to && (
+                <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>
+                  🔔 {getMemberName(form.assigned_to)} will be notified when assigned.
+                </p>
+              )}
+            </Field>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
             <div>
               <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 5 }}>Sprint (optional)</label>
@@ -269,12 +408,14 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
               </select>
             </div>
           </div>
+
           <Field label="Linked test case (optional)">
             <select value={form.test_case_id} onChange={e => set('test_case_id', e.target.value)} style={sel}>
               <option value="">None</option>
               {testCases.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
             </select>
           </Field>
+
           <Field label="Description">
             <MentionInput value={form.description} onChange={val => set('description', val)} members={members} placeholder="What went wrong? Type @ to mention someone" rows={3} />
           </Field>
