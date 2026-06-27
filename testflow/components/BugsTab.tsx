@@ -77,7 +77,15 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
   const [filterAssignee, setFilterAssignee] = useState('')
   const [search, setSearch] = useState('')
   const [savingStatus, setSavingStatus] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string>('')
   const sb = createClient()
+
+  // Get current user ID on mount
+  useState(() => {
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (session) setCurrentUserId(session.user.id)
+    })
+  })
 
   const emptyForm = {
     title: '', description: '', steps: '', expected_result: '', actual_result: '',
@@ -381,7 +389,7 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} style={{ ...sel, flex: 1 }}>
                   <option value="">Unassigned</option>
-                  {members.map((m: any) => (
+                  {members.filter((m: any) => m.id !== currentUserId).map((m: any) => (
                     <option key={m.id} value={m.id}>{m.name || m.email}</option>
                   ))}
                 </select>
