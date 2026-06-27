@@ -213,26 +213,42 @@ export default function ProjectPage() {
   useEffect(() => { load() }, [load])
 
   // ── AUTO-OPEN FROM NOTIFICATION CLICK ──
-  useEffect(() => {
-    if (loading) return
+  const openFromUrl = useCallback(() => {
     const params = new URLSearchParams(window.location.search)
     const openType = params.get('open')
     const openId = params.get('id')
     if (!openType || !openId) return
+    // Clear URL params immediately so next notification click works
+    window.history.replaceState({}, '', window.location.pathname)
     if (openType === 'case') {
       const tc = cases.find((c: any) => c.id === openId)
       if (tc) {
-        // Add section name
         const sec = sections.find((s: any) => s.id === tc.section_id)
-        pushNav('case', { ...tc, sectionName: sec?.name || '' })
+        setNavStack([{ type: 'case', data: { ...tc, sectionName: sec?.name || '' } }])
       }
     } else if (openType === 'bug') {
       const bug = bugs.find((b: any) => b.id === openId)
-      if (bug) pushNav('bug', bug)
+      if (bug) setNavStack([{ type: 'bug', data: bug }])
     }
-    // Clear URL params without reload
-    window.history.replaceState({}, '', window.location.pathname)
-  }, [loading, cases, bugs])
+  }, [cases, bugs, sections])
+
+  useEffect(() => {
+    if (loading) return
+    openFromUrl()
+  }, [loading, openFromUrl])
+
+  // Listen for notification navigation events (same-page clicks)
+  useEffect(() => {
+    const handleNotificationNav = () => {
+      setTimeout(() => openFromUrl(), 50)
+    }
+    window.addEventListener('notification-navigate', handleNotificationNav)
+    window.addEventListener('popstate', handleNotificationNav)
+    return () => {
+      window.removeEventListener('notification-navigate', handleNotificationNav)
+      window.removeEventListener('popstate', handleNotificationNav)
+    }
+  }, [openFromUrl])
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}><p style={{ color: '#9ca3af', fontSize: 13 }}>Loading…</p></div>
   if (!project) return <div style={{ padding: 24 }}><p style={{ color: '#ef4444' }}>Project not found.</p></div>
@@ -321,6 +337,7 @@ export default function ProjectPage() {
         myRole={myRole}
         onPush={pushNav} onPop={popNav} onGoTo={goToIndex} onClose={clearNav}
         onViewBug={(b) => pushNav("bug", b)}
+        onShowComment={(runId, caseId, status) => setGlobalCommentModal({ runId, caseId, status })}
         onUpdateRunResult={async (runId, caseId, status) => {
           const run = runs.find(r => r.id === runId)
           if (!run) return
