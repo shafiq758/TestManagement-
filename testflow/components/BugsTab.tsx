@@ -128,7 +128,7 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               text: mentionText, projectId, type: 'mention',
-              link: window.location.pathname,
+              link: `/dashboard/${projectId}?open=bug&id=${editing?.id || ''}`,
               createdBy: session.user.id,
               workspaceId: projData.workspace_id,
             }),
