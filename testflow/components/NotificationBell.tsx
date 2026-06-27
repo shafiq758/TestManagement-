@@ -16,29 +16,14 @@ export default function NotificationBell({ userId }: { userId: string }) {
   useEffect(() => {
     if (!userId) return
     load()
-
-    // Poll every 30 seconds for new notifications
     const interval = setInterval(load, 30000)
-
-    // Real-time subscription
     const channel = sb.channel('notifications')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `user_id=eq.${userId}`,
-      }, (payload) => {
-        setNotifications(p => [payload.new, ...p])
-      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        (payload) => { setNotifications(p => [payload.new, ...p]) })
       .subscribe()
-
-    return () => {
-      clearInterval(interval)
-      sb.removeChannel(channel)
-    }
+    return () => { clearInterval(interval); sb.removeChannel(channel) }
   }, [userId])
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -50,11 +35,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
   }, [])
 
   const load = async () => {
-    const { data } = await sb.from('notifications')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(20)
+    const { data } = await sb.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(20)
     setNotifications(data || [])
   }
 
@@ -65,11 +46,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
   const markAllRead = async () => {
     setLoading(true)
-    await fetch('/api/notifications', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ all: true, userId }),
-    })
+    await fetch('/api/notifications', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ all: true, userId }) })
     setNotifications(p => p.map(n => ({ ...n, read: true })))
     setLoading(false)
   }
@@ -78,16 +55,24 @@ export default function NotificationBell({ userId }: { userId: string }) {
     await markRead(n.id)
     setShowDropdown(false)
     if (n.link) {
-      router.push(n.link)
+      try {
+        const url = new URL(n.link, window.location.origin)
+        const currentPath = window.location.pathname
+        if (currentPath === url.pathname) {
+          // Same page — use pushState so the project page useEffect picks it up without full reload
+          window.history.pushState({}, '', n.link)
+          // Dispatch a custom event so the page knows to re-check URL
+          window.dispatchEvent(new CustomEvent('notification-navigate', { detail: { link: n.link } }))
+        } else {
+          router.push(n.link)
+        }
+      } catch {
+        router.push(n.link)
+      }
     }
   }
 
-  const typeIcon: Record<string, string> = {
-    mention: '💬',
-    comment: '📝',
-    reply: '↩',
-    bug_assigned: '🐛',
-  }
+  const typeIcon: Record<string, string> = { mention: '💬', comment: '📝', reply: '↩', bug_assigned: '🐛' }
 
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime()
@@ -101,51 +86,28 @@ export default function NotificationBell({ userId }: { userId: string }) {
 
   return (
     <div ref={dropdownRef} style={{ position: 'relative' }}>
-      {/* Bell button */}
       <button onClick={() => setShowDropdown(p => !p)}
         style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: '6px', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#f3f4f6'}
         onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'none'}>
         <span style={{ fontSize: 18 }}>🔔</span>
         {unreadCount > 0 && (
-          <span style={{
-            position: 'absolute', top: 2, right: 2,
-            background: '#dc2626', color: '#fff',
-            fontSize: 9, fontWeight: 700,
-            minWidth: 16, height: 16, borderRadius: 8,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 3px',
-          }}>
+          <span style={{ position: 'absolute', top: 2, right: 2, background: '#dc2626', color: '#fff', fontSize: 9, fontWeight: 700, minWidth: 16, height: 16, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px' }}>
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
       </button>
 
-      {/* Dropdown */}
       {showDropdown && (
-        <div style={{
-          position: 'fixed',
-          bottom: 60,
-          left: 16,
-          background: '#fff', border: '1px solid #e5e7eb',
-          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          width: 340, maxHeight: 480, overflow: 'hidden',
-          display: 'flex', flexDirection: 'column', zIndex: 1000,
-        }}>
-          {/* Header */}
+        <div style={{ position: 'fixed', bottom: 60, left: 16, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: 340, maxHeight: 480, overflow: 'hidden', display: 'flex', flexDirection: 'column', zIndex: 1000 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #f3f4f6' }}>
             <span style={{ fontSize: 14, fontWeight: 600 }}>
               Notifications {unreadCount > 0 && <span style={{ background: '#dc2626', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 8, marginLeft: 6 }}>{unreadCount}</span>}
             </span>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} disabled={loading}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#2563eb', fontFamily: 'inherit' }}>
-                Mark all read
-              </button>
+              <button onClick={markAllRead} disabled={loading} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#2563eb', fontFamily: 'inherit' }}>Mark all read</button>
             )}
           </div>
-
-          {/* List */}
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {notifications.length === 0 && (
               <div style={{ padding: '32px 16px', textAlign: 'center' }}>
@@ -155,12 +117,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
             )}
             {notifications.map(n => (
               <div key={n.id} onClick={() => handleClick(n)}
-                style={{
-                  display: 'flex', gap: 10, padding: '12px 16px', cursor: n.link ? 'pointer' : 'default',
-                  background: n.read ? '#fff' : '#f0f9ff',
-                  borderBottom: '1px solid #f9fafb',
-                  transition: 'background 0.1s',
-                }}
+                style={{ display: 'flex', gap: 10, padding: '12px 16px', cursor: n.link ? 'pointer' : 'default', background: n.read ? '#fff' : '#f0f9ff', borderBottom: '1px solid #f9fafb', transition: 'background 0.1s' }}
                 onMouseEnter={e => { if (n.link) (e.currentTarget as HTMLElement).style.background = n.read ? '#f9fafb' : '#e0f2fe' }}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = n.read ? '#fff' : '#f0f9ff'}>
                 <div style={{ width: 32, height: 32, borderRadius: '50%', background: n.read ? '#f3f4f6' : '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>
