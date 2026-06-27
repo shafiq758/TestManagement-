@@ -153,11 +153,12 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
         const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
         if (proj) {
           // In-app notification
+          const assignerName = members.find((m: any) => m.id === session.user.id)?.name || 'Someone'
           await sb.from('notifications').insert({
             user_id: newAssignee,
             type: 'bug_assigned',
-            title: 'Bug assigned to you',
-            body: form.title.trim(),
+            title: `You've been assigned a bug`,
+            body: `${assignerName} assigned you: "${form.title.trim()}"`,
             link: `/dashboard/${projectId}?open=bug&id=${bugId}`,
             project_id: projectId,
             created_by: session.user.id,
@@ -389,17 +390,26 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} style={{ ...sel, flex: 1 }}>
                   <option value="">Unassigned</option>
+                  {form.assigned_to === currentUserId && (
+                    <option value={currentUserId}>You (me)</option>
+                  )}
                   {members.filter((m: any) => m.id !== currentUserId).map((m: any) => (
                     <option key={m.id} value={m.id}>{m.name || m.email}</option>
                   ))}
                 </select>
-                <button type="button" onClick={async () => {
-                  const { data: { session } } = await sb.auth.getSession()
-                  if (session) set('assigned_to', session.user.id)
-                }}
-                  style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 12px', fontSize: 12, background: '#f9fafb', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
-                  Assign to me
-                </button>
+                {form.assigned_to === currentUserId ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#15803d', background: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: 7, padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                    ✓ Assigned to you
+                  </span>
+                ) : (
+                  <button type="button" onClick={async () => {
+                    const { data: { session } } = await sb.auth.getSession()
+                    if (session) set('assigned_to', session.user.id)
+                  }}
+                    style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 12px', fontSize: 12, background: '#f9fafb', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+                    Assign to me
+                  </button>
+                )}
               </div>
               {form.assigned_to && (
                 <p style={{ fontSize: 11, color: '#6b7280', margin: '4px 0 0' }}>
