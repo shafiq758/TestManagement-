@@ -111,24 +111,28 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
       attachments: form.attachments.map(a => a.url),
       created_by: session?.user?.id,
     }
+
+    let bugId = editing?.id || ''
     if (editing) {
       await sb.from('bugs').update(payload).eq('id', editing.id)
     } else {
-      await sb.from('bugs').insert(payload)
+      // Get the new bug's ID for the notification link
+      const { data: newBug } = await sb.from('bugs').insert(payload).select().single()
+      bugId = newBug?.id || ''
     }
-    // Send mention notifications
+
+    // Send mention notifications with correct redirect link
     const mentionText = [form.description, form.steps, form.expected_result, form.actual_result].join(' ')
-    if (mentionText.includes('@') && session) {
+    if (mentionText.includes('@') && session && bugId) {
       try {
-        const sbClient = createClient()
-        const { data: projData } = await sbClient.from('projects').select('workspace_id').eq('id', projectId).single()
+        const { data: projData } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
         if (projData) {
           await fetch('/api/notifications', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               text: mentionText, projectId, type: 'mention',
-              link: `/dashboard/${projectId}?open=bug&id=${editing?.id || ''}`,
+              link: `/dashboard/${projectId}?open=bug&id=${bugId}`,
               createdBy: session.user.id,
               workspaceId: projData.workspace_id,
             }),
@@ -136,6 +140,7 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
         }
       } catch(e) { console.error('Notification error:', e) }
     }
+
     setShowModal(false); onRefresh()
   }
 
@@ -158,7 +163,6 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
 
   return (
     <div>
-      {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search bugs…"
@@ -176,7 +180,6 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
         {canEdit && <button onClick={openCreate} style={btnStyle}>🐛 Report bug</button>}
       </div>
 
-      {/* Empty state */}
       {bugs.length === 0 && (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <p style={{ fontSize: 32, margin: '0 0 10px' }}>🐛</p>
@@ -186,7 +189,6 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
         </div>
       )}
 
-      {/* Bug list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.map(bug => {
           const sprint = sprints.find(s => s.id === bug.sprint_id)
@@ -194,7 +196,6 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
           const tc = testCases.find(c => c.id === bug.test_case_id)
           const imgCount = (bug.attachments || []).filter(u => !u.match(/\.(mp4|webm|mov)$/i)).length
           const vidCount = (bug.attachments || []).length - imgCount
-
           return (
             <div key={bug.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 16px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -227,13 +228,11 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
         })}
       </div>
 
-      {/* Create/Edit Modal */}
       {showModal && (
         <Modal title={editing ? 'Edit bug' : 'Report bug'} onClose={() => setShowModal(false)}>
           <Field label="Title" required>
             <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="Brief summary of the bug" autoFocus style={inp} />
           </Field>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
             <div>
               <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 5 }}>Severity</label>
@@ -254,7 +253,6 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
               </select>
             </div>
           </div>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
             <div>
               <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 5 }}>Sprint (optional)</label>
@@ -271,49 +269,29 @@ export default function BugsTab({ bugs, projectId, sprints, testRuns, testCases,
               </select>
             </div>
           </div>
-
           <Field label="Linked test case (optional)">
             <select value={form.test_case_id} onChange={e => set('test_case_id', e.target.value)} style={sel}>
               <option value="">None</option>
               {testCases.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
             </select>
           </Field>
-
           <Field label="Description">
-            <MentionInput
-              value={form.description}
-              onChange={val => set('description', val)}
-              members={members}
-              placeholder="What went wrong? Type @ to mention someone"
-              rows={3}
-            />
+            <MentionInput value={form.description} onChange={val => set('description', val)} members={members} placeholder="What went wrong? Type @ to mention someone" rows={3} />
           </Field>
           <Field label="Steps to reproduce">
-            <textarea value={form.steps} onChange={e => set('steps', e.target.value)}
-              placeholder={"1. Go to...\n2. Click...\n3. Observe..."} rows={4}
-              style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
+            <textarea value={form.steps} onChange={e => set('steps', e.target.value)} placeholder={"1. Go to...\n2. Click...\n3. Observe..."} rows={4} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
           </Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
             <Field label="Expected result">
-              <textarea value={form.expected_result} onChange={e => set('expected_result', e.target.value)}
-                placeholder="What should happen?" rows={3}
-                style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
+              <textarea value={form.expected_result} onChange={e => set('expected_result', e.target.value)} placeholder="What should happen?" rows={3} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
             </Field>
             <Field label="Actual result">
-              <textarea value={form.actual_result} onChange={e => set('actual_result', e.target.value)}
-                placeholder="What actually happened?" rows={3}
-                style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
+              <textarea value={form.actual_result} onChange={e => set('actual_result', e.target.value)} placeholder="What actually happened?" rows={3} style={{ ...inp, resize: 'vertical', fontFamily: 'inherit' }} />
             </Field>
           </div>
-
           <Field label="Attachments (images & videos up to 25MB)">
-            <AttachmentUploader
-              attachments={form.attachments}
-              onChange={atts => set('attachments', atts)}
-              folder="bugs"
-            />
+            <AttachmentUploader attachments={form.attachments} onChange={atts => set('attachments', atts)} folder="bugs" />
           </Field>
-
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
             <button onClick={() => setShowModal(false)} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
             <button onClick={save} disabled={!form.title.trim()}
