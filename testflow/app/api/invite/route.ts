@@ -97,6 +97,8 @@ export async function POST(req: NextRequest) {
     const sendgridKey = process.env.SENDGRID_API_KEY
     const resendKey = process.env.RESEND_API_KEY
 
+    console.log('Email keys:', { brevo: !!brevoKey, sendgrid: !!sendgridKey, resend: !!resendKey })
+
     if (brevoKey) {
       // Brevo (free 300/day, no domain needed)
       const res = await fetch('https://api.brevo.com/v3/smtp/email', {
@@ -161,6 +163,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Invite error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ 
+      error: error.message,
+      brevo: !!process.env.BREVO_API_KEY,
+      resend: !!process.env.RESEND_API_KEY,
+      sendgrid: !!process.env.SENDGRID_API_KEY,
+    }, { status: 500 })
   }
 }
