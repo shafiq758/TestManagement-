@@ -85,89 +85,43 @@ export async function POST(req: NextRequest) {
           <p style="font-size: 13px; font-weight: 600; color: #374151; margin: 0 0 12px;">Your login credentials:</p>
           <p style="font-size: 13px; color: #6b7280; margin: 0 0 6px;">Email: <strong style="color: #111;">${invitedEmail}</strong></p>
           <p style="font-size: 13px; color: #6b7280; margin: 0 0 16px;">Password: <strong style="font-family: monospace; font-size: 16px; color: #111; background: #fff; padding: 2px 8px; border-radius: 4px; border: 1px solid #e5e7eb;">${existingUser ? 'Use your existing password' : tempPassword}</strong></p>
-          ${!existingUser ? '<p style="font-size: 12px; color: #ef4444; margin: 0;">⚠️ Please change this password after first login.</p>' : ''}
+          ${!existingUser ? '<p style="font-size: 12px; color: #ef4444; margin: 0;">Please change this password after first login.</p>' : ''}
         </div>
-        <a href="${appUrl}/auth" style="display: inline-block; background: #111; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-bottom: 24px;">Sign in to TestFlow →</a>
+        <a href="${appUrl}/auth" style="display: inline-block; background: #111; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; margin-bottom: 24px;">Sign in to TestFlow</a>
         <p style="font-size: 12px; color: #9ca3af; margin: 0;">If you didn't expect this invitation, please ignore this email.</p>
       </div>
     `
 
-    // Try Brevo first, then SendGrid, then Resend, then Gmail
+    // Send via Brevo only
     const brevoKey = process.env.BREVO_API_KEY
-    const sendgridKey = process.env.SENDGRID_API_KEY
-    const resendKey = process.env.RESEND_API_KEY
+    if (!brevoKey) {
+      return NextResponse.json({ error: 'BREVO_API_KEY not configured' }, { status: 500 })
+    }
 
-    console.log('Email keys:', { brevo: !!brevoKey, sendgrid: !!sendgridKey, resend: !!resendKey })
+    const senderEmail = process.env.SMTP_USER || 'admintestflow@gmail.com'
 
-    if (brevoKey) {
-      // Brevo (free 300/day, no domain needed)
-      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sender: { name: 'TestFlow', email: process.env.SMTP_USER || 'admintestflow@gmail.com' },
-          to: [{ email: invitedEmail }],
-          subject: `You've been invited to join ${workspaceName} on TestFlow`,
-          htmlContent: htmlBody,
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.text()
-        throw new Error(`Brevo error: ${err}`)
-      }
-    } else if (sendgridKey) {
-      // SendGrid
-      const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${sendgridKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: invitedEmail }] }],
-          from: { email: process.env.SMTP_USER || 'admintestflow@gmail.com', name: 'TestFlow' },
-          subject: `You've been invited to join ${workspaceName} on TestFlow`,
-          content: [{ type: 'text/html', value: htmlBody }],
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.text()
-        throw new Error(`SendGrid error: ${err}`)
-      }
-    } else if (resendKey) {
-      // Resend
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: 'TestFlow <onboarding@resend.dev>',
-          to: invitedEmail,
-          subject: `You've been invited to join ${workspaceName} on TestFlow`,
-          html: htmlBody,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message || 'Resend failed')
-    } else {
-      // Gmail fallback
-      const nodemailer = await import('nodemailer')
-      const transporter = nodemailer.default.createTransport({
-        host: 'smtp.gmail.com', port: 465, secure: true,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-      })
-      await transporter.sendMail({
-        from: `"TestFlow" <${process.env.SMTP_USER}>`,
-        to: invitedEmail,
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': brevoKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: 'TestFlow', email: senderEmail },
+        to: [{ email: invitedEmail }],
         subject: `You've been invited to join ${workspaceName} on TestFlow`,
-        html: htmlBody,
-      })
+        htmlContent: htmlBody,
+      }),
+    })
+
+    const responseText = await res.text()
+    if (!res.ok) {
+      return NextResponse.json({ error: `Brevo error: ${responseText}` }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Invite error:', error)
-    return NextResponse.json({ 
-      error: error.message,
-      brevo: !!process.env.BREVO_API_KEY,
-      resend: !!process.env.RESEND_API_KEY,
-      sendgrid: !!process.env.SENDGRID_API_KEY,
-    }, { status: 500 })
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
