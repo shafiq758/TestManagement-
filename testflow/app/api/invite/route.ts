@@ -92,9 +92,45 @@ export async function POST(req: NextRequest) {
       </div>
     `
 
-    // Send via Resend API
+    // Try Brevo first, then SendGrid, then Resend, then Gmail
+    const brevoKey = process.env.BREVO_API_KEY
+    const sendgridKey = process.env.SENDGRID_API_KEY
     const resendKey = process.env.RESEND_API_KEY
-    if (resendKey) {
+
+    if (brevoKey) {
+      // Brevo (free 300/day, no domain needed)
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': brevoKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender: { name: 'TestFlow', email: process.env.SMTP_USER || 'admintestflow@gmail.com' },
+          to: [{ email: invitedEmail }],
+          subject: `You've been invited to join ${workspaceName} on TestFlow`,
+          htmlContent: htmlBody,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.text()
+        throw new Error(`Brevo error: ${err}`)
+      }
+    } else if (sendgridKey) {
+      // SendGrid
+      const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${sendgridKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: invitedEmail }] }],
+          from: { email: process.env.SMTP_USER || 'admintestflow@gmail.com', name: 'TestFlow' },
+          subject: `You've been invited to join ${workspaceName} on TestFlow`,
+          content: [{ type: 'text/html', value: htmlBody }],
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.text()
+        throw new Error(`SendGrid error: ${err}`)
+      }
+    } else if (resendKey) {
+      // Resend
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
@@ -108,10 +144,10 @@ export async function POST(req: NextRequest) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Resend failed')
     } else {
-      // Fallback: nodemailer with Gmail
+      // Gmail fallback
       const nodemailer = await import('nodemailer')
       const transporter = nodemailer.default.createTransport({
-        host: 'smtp.gmail.com', port: 587, secure: false,
+        host: 'smtp.gmail.com', port: 465, secure: true,
         auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
       })
       await transporter.sendMail({
