@@ -129,6 +129,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Invite error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ 
+      error: error.message,
+      stack: error.stack,
+      smtpUser: process.env.SMTP_USER ? 'set' : 'missing',
+      smtpPass: process.env.SMTP_PASS ? 'set' : 'missing',
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'set' : 'missing',
+      serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ? 'set' : 'missing',
+    }, { status: 500 })
   }
 }
