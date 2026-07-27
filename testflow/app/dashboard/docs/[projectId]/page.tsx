@@ -81,7 +81,7 @@ export default function DocsListPage() {
   const canEdit = canEditCases(myRole)
 
   if (loading) return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>Loading docs…</div>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>Loading PRDs…</div>
   )
 
   return (
@@ -94,12 +94,12 @@ export default function DocsListPage() {
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', fontFamily: 'inherit', padding: 0, marginBottom: 4 }}>
               ← {project?.name}
             </button>
-            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>📄 Docs</h1>
+            <h1 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>📋 PRD</h1>
           </div>
           {canEdit && (
             <button onClick={() => setShowTemplateModal(true)} disabled={creating}
               style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 500, cursor: creating ? 'not-allowed' : 'pointer', opacity: creating ? 0.6 : 1 }}>
-              {creating ? 'Creating…' : '+ New document'}
+              {creating ? 'Creating…' : '+ New PRD'}
             </button>
           )}
         </div>
@@ -109,7 +109,7 @@ export default function DocsListPage() {
         {/* Search */}
         <div style={{ marginBottom: 20 }}>
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search documents…"
+            placeholder="Search PRDs…"
             style={{ width: 300, border: '1px solid #d1d5db', borderRadius: 8, padding: '8px 12px', fontSize: 13, outline: 'none', background: '#fff' }} />
         </div>
 
@@ -117,9 +117,9 @@ export default function DocsListPage() {
         {docs.length === 0 && (
           <div style={{ textAlign: 'center', padding: '64px 0' }}>
             <p style={{ fontSize: 40, margin: '0 0 12px' }}>📄</p>
-            <p style={{ fontWeight: 600, fontSize: 16, margin: '0 0 8px' }}>No documents yet</p>
+            <p style={{ fontWeight: 600, fontSize: 16, margin: '0 0 8px' }}>No PRDs yet</p>
             <p style={{ fontSize: 14, color: '#6b7280', margin: '0 0 20px' }}>Create PRDs, test strategies, and specs linked to your sprints.</p>
-            {canEdit && <button onClick={() => setShowTemplateModal(true)} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer' }}>+ Create first document</button>}
+            {canEdit && <button onClick={() => setShowTemplateModal(true)} style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer' }}>+ Create first PRD</button>}
           </div>
         )}
 
