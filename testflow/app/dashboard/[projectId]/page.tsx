@@ -445,7 +445,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
                 </div>
               )}
               {sectionCases.map((tc: any, i: number) => {
-                const pb = PRIORITY_BADGE[tc.priority]
+                const pb = PRIORITY_BADGE[tc.priority as Priority] || PRIORITY_BADGE.medium
                 return (
                   <div key={tc.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 12px', borderTop: '1px solid #f3f4f6' }}>
                     <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', paddingTop: 2, minWidth: 48 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
