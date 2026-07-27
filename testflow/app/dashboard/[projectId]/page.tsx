@@ -1003,24 +1003,45 @@ function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestone
     }
 
     if (type === 'plan') {
-      const planCases = cases.map(c => ({...c, sectionName: sections.find(s => s.id === c.section_id)?.name || ''})).filter(c => data.case_ids.includes(c.id))
+      const planCases = cases.map(c => ({...c, sectionName: sections.find(s => s.id === c.section_id)?.name || 'No Section'})).filter(c => data.case_ids.includes(c.id))
+      // Group by section
+      const sectionGroups: Record<string, {name: string; cases: any[]}> = {}
+      planCases.forEach(tc => {
+        const secId = tc.section_id || 'none'
+        if (!sectionGroups[secId]) sectionGroups[secId] = { name: tc.sectionName, cases: [] }
+        sectionGroups[secId].cases.push(tc)
+      })
+      const groupEntries = Object.entries(sectionGroups)
       return (
         <div>
           {data.description && <DDRow label="Description" value={data.description} />}
-          <DDRow label="Cases" value={`${planCases.length} test case${planCases.length !== 1 ? 's' : ''}`} />
+          <DDRow label="Cases" value={`${planCases.length} test case${planCases.length !== 1 ? 's' : ''} in ${groupEntries.length} section${groupEntries.length !== 1 ? 's' : ''}`} />
           <div style={{ marginTop: 8 }}>
-            <p style={sectionLabel}>Test Cases ({planCases.length})</p>
             {planCases.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No test cases in this plan.</p>}
-            {planCases.map((tc, i) => {
-              const pc = priorityCfg[tc.priority]
-              return (
-                <DDCard key={tc.id} onClick={() => onPush('case', tc, {bugs})} last={i === planCases.length - 1}>
-                  <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName} · {tc.type}</p></div>
-                  <span style={{ background: pc.bg, color: pc.color, fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
-                  <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
-                </DDCard>
-              )
-            })}
+            {groupEntries.map(([secId, group]) => (
+              <div key={secId} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px 8px 0 0', borderBottom: 'none' }}>
+                  <span style={{ fontSize: 13 }}>📁</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111' }}>{group.name}</span>
+                  <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>{group.cases.length} case{group.cases.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div style={{ border: '1px solid #e5e7eb', borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
+                  {group.cases.map((tc, i) => {
+                    const pc = priorityCfg[tc.priority] || priorityCfg.medium
+                    return (
+                      <DDCard key={tc.id} onClick={() => onPush('case', tc, {bugs})} last={i === group.cases.length - 1}>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p>
+                          <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.type} · TC-{tc.id.slice(0,5).toUpperCase()}</p>
+                        </div>
+                        <span style={{ background: pc.bg, color: pc.color, fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
+                        <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                      </DDCard>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )
