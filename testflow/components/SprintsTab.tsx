@@ -371,19 +371,50 @@ export default function SprintsTab({ sprints, milestones, testPlans, cases, sect
               </div>
             </div>
             <input value={caseSearch} onChange={e => setCaseSearch(e.target.value)} placeholder="Search test cases..." style={{ ...inpStyle, marginBottom: 8 }} />
-            <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
-              {filteredCases.map((tc, i) => {
-                const sec = sections.find(s => s.id === tc.section_id)
-                return (
-                  <label key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', background: planForm.case_ids.includes(tc.id) ? '#eff6ff' : '#fff' }}>
-                    <input type="checkbox" checked={planForm.case_ids.includes(tc.id)} onChange={() => toggleCase(tc.id)} style={{ cursor: 'pointer' }} />
-                    <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
-                    <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
-                    <span style={{ fontSize: 11, color: '#9ca3af' }}>{sec?.name}</span>
-                  </label>
-                )
-              })}
-              {filteredCases.length === 0 && <p style={{ padding: '12px', fontSize: 13, color: '#9ca3af', margin: 0 }}>No test cases found.</p>}
+            <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+              {(() => {
+                // Group by section
+                const groups: Record<string, { section: any; cases: any[] }> = {}
+                filteredCases.forEach(tc => {
+                  const sec = sections.find(s => s.id === tc.section_id)
+                  const key = tc.section_id || 'none'
+                  if (!groups[key]) groups[key] = { section: sec, cases: [] }
+                  groups[key].cases.push(tc)
+                })
+                const entries = Object.entries(groups)
+                if (entries.length === 0) return <p style={{ padding: '12px', fontSize: 13, color: '#9ca3af', margin: 0 }}>No test cases found.</p>
+                return entries.map(([key, group]) => (
+                  <div key={key}>
+                    {/* Section header */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: '#f3f4f6', borderTop: '1px solid #e5e7eb' }}>
+                      <span style={{ fontSize: 12 }}>📁</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{group.section?.name || 'No Section'}</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 'auto' }}>
+                        {group.cases.filter(tc => planForm.case_ids.includes(tc.id)).length}/{group.cases.length}
+                      </span>
+                      <button onClick={() => {
+                        const allSelected = group.cases.every(tc => planForm.case_ids.includes(tc.id))
+                        if (allSelected) {
+                          setPlanForm(p => ({ ...p, case_ids: p.case_ids.filter(id => !group.cases.find(tc => tc.id === id)) }))
+                        } else {
+                          const newIds = group.cases.map(tc => tc.id).filter(id => !planForm.case_ids.includes(id))
+                          setPlanForm(p => ({ ...p, case_ids: [...p.case_ids, ...newIds] }))
+                        }
+                      }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#2563eb', fontFamily: 'inherit' }}>
+                        {group.cases.every(tc => planForm.case_ids.includes(tc.id)) ? 'Deselect all' : 'Select all'}
+                      </button>
+                    </div>
+                    {/* Cases in section */}
+                    {group.cases.map((tc, i) => (
+                      <label key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px 8px 24px', cursor: 'pointer', borderTop: '1px solid #f9fafb', background: planForm.case_ids.includes(tc.id) ? '#eff6ff' : '#fff' }}>
+                        <input type="checkbox" checked={planForm.case_ids.includes(tc.id)} onChange={() => toggleCase(tc.id)} style={{ cursor: 'pointer' }} />
+                        <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+                        <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                ))
+              })()}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
