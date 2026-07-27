@@ -352,7 +352,9 @@ export default function ProjectPage() {
 
 function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, mentionMembers = [] }: { sections: Section[]; cases: TestCase[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewCase: (tc: any) => void; mentionMembers?: any[] }) {
   const [addingSection, setAddingSection] = useState(false)
+  const [addingSubsectionTo, setAddingSubsectionTo] = useState<string | null>(null)
   const [sectionName, setSectionName] = useState('')
+  const [subsectionName, setSubsectionName] = useState('')
   const [addingCaseTo, setAddingCaseTo] = useState<string | null>(null)
   const [editingCase, setEditingCase] = useState<TestCase | null>(null)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -360,16 +362,32 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
   const canEdit = canEditCases(myRole)
   const sb = createClient()
 
+  const rootSections = sections.filter(s => !(s as any).parent_id)
+  const getChildren = (parentId: string) => sections.filter(s => (s as any).parent_id === parentId)
+  const getAllDescendantIds = (sectionId: string): string[] => {
+    const children = getChildren(sectionId)
+    return [sectionId, ...children.flatMap((c: any) => getAllDescendantIds(c.id))]
+  }
+
   const createSection = async () => {
     if (!sectionName.trim()) return
-    await sb.from('sections').insert({ name: sectionName.trim(), project_id: projectId })
+    await sb.from('sections').insert({ name: sectionName.trim(), project_id: projectId, parent_id: null, depth: 0 })
     setSectionName(''); setAddingSection(false); onRefresh()
   }
 
+  const createSubsection = async (parentId: string) => {
+    if (!subsectionName.trim()) return
+    const parent = sections.find(s => s.id === parentId)
+    const depth = ((parent as any)?.depth || 0) + 1
+    await sb.from('sections').insert({ name: subsectionName.trim(), project_id: projectId, parent_id: parentId, depth })
+    setSubsectionName(''); setAddingSubsectionTo(null); onRefresh()
+  }
+
   const deleteSection = async (id: string) => {
-    if (!confirm('Delete this section and all its test cases?')) return
-    await sb.from('test_cases').delete().eq('section_id', id)
-    await sb.from('sections').delete().eq('id', id)
+    if (!confirm('Delete this section and all its subsections and test cases?')) return
+    const allIds = getAllDescendantIds(id)
+    for (const sid of allIds) await sb.from('test_cases').delete().eq('section_id', sid)
+    for (const sid of [...allIds].reverse()) await sb.from('sections').delete().eq('id', sid)
     onRefresh()
   }
 
@@ -381,13 +399,92 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
 
   const total = cases.length
 
+  const renderSection = (section: Section, depth: number = 0): React.ReactNode => {
+    const sectionCases = cases.filter(c => c.section_id === section.id)
+    const children = getChildren(section.id)
+    const isOpen = !collapsed[section.id]
+    const indent = depth * 20
+
+    return (
+      <div key={section.id} style={{ marginBottom: 6 }}>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginLeft: indent }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: depth === 0 ? '#f9fafb' : '#f3f4f6', borderBottom: isOpen && (sectionCases.length > 0 || children.length > 0 || addingSubsectionTo === section.id) ? '1px solid #e5e7eb' : 'none' }}>
+            <button onClick={() => setCollapsed(p => ({ ...p, [section.id]: !p[section.id] }))}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#9ca3af', padding: 0, width: 16 }}>
+              {isOpen ? '\u25be' : '\u25b8'}
+            </button>
+            <span style={{ fontSize: 13 }}>{depth === 0 ? '\ud83d\udcc1' : '\ud83d\udcc2'}</span>
+            <span style={{ fontWeight: depth === 0 ? 600 : 500, fontSize: 13, flex: 1, color: '#111' }}>{section.name}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>
+              {sectionCases.length} case{sectionCases.length !== 1 ? 's' : ''}
+              {children.length > 0 && ` · ${children.length} subsection${children.length !== 1 ? 's' : ''}`}
+            </span>
+            {canEdit && (
+              <>
+                <Btn sm onClick={() => setAddingCaseTo(section.id)}>+ Case</Btn>
+                <Btn sm onClick={() => { setAddingSubsectionTo(section.id); setSubsectionName('') }}>+ Subsection</Btn>
+                <button onClick={() => deleteSection(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px' }}>\u2715</button>
+              </>
+            )}
+          </div>
+
+          {addingSubsectionTo === section.id && (
+            <div style={{ display: 'flex', gap: 6, padding: '8px 12px', background: '#eff6ff', borderBottom: '1px solid #dbeafe' }}>
+              <Inp value={subsectionName} onChange={setSubsectionName} placeholder="Subsection name" autoFocus
+                onKeyDown={(e: any) => { if (e.key === 'Enter') createSubsection(section.id); if (e.key === 'Escape') setAddingSubsectionTo(null) }} />
+              <Btn onClick={() => createSubsection(section.id)} primary sm>Save</Btn>
+              <Btn onClick={() => setAddingSubsectionTo(null)} sm>Cancel</Btn>
+            </div>
+          )}
+
+          {isOpen && (
+            <div>
+              {children.length > 0 && (
+                <div style={{ padding: '6px 8px' }}>
+                  {children.map((child: any) => renderSection(child, depth + 1))}
+                </div>
+              )}
+              {sectionCases.map((tc: any, i: number) => {
+                const pb = PRIORITY_BADGE[tc.priority]
+                return (
+                  <div key={tc.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 12px', borderTop: '1px solid #f3f4f6' }}>
+                    <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', paddingTop: 2, minWidth: 48 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <button onClick={() => onViewCase(tc)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 500, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit", textAlign: "left" }}>{tc.title}</button>
+                        <Badge {...pb} />
+                        <span style={{ fontSize: 11, color: '#9ca3af', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>{tc.type}</span>
+                      </div>
+                      {tc.description && <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280' }}>{tc.description}</p>}
+                    </div>
+                    {canEdit && (
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        <Btn sm onClick={() => setEditingCase(tc)}>Edit</Btn>
+                        <Btn sm onClick={() => deleteCase(tc.id)}>\u2715</Btn>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              {sectionCases.length === 0 && children.length === 0 && addingSubsectionTo !== section.id && (
+                <p style={{ fontSize: 12, color: '#9ca3af', padding: '10px 12px', margin: 0 }}>
+                  Empty \u2014 <button onClick={() => setAddingCaseTo(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontSize: 12, textDecoration: 'underline', fontFamily: 'inherit' }}>add a test case</button>
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{total} test case{total !== 1 ? 's' : ''} · {sections.length} section{sections.length !== 1 ? 's' : ''}</p>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{total} test case{total !== 1 ? 's' : ''} \u00b7 {sections.length} section{sections.length !== 1 ? 's' : ''}</p>
         <div style={{ display: 'flex', gap: 6 }}>
-          <Btn onClick={() => setShowImportExport(true)} sm>↕ Import / Export</Btn>
-          {canEditCases(myRole) && <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>}
+          <Btn onClick={() => setShowImportExport(true)} sm>\u2195 Import / Export</Btn>
+          {canEdit && <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>}
         </div>
       </div>
 
@@ -400,59 +497,16 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
         </div>
       )}
 
-      {sections.length === 0 && !addingSection && (
+      {rootSections.length === 0 && !addingSection && (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <p style={{ fontSize: 32, margin: '0 0 10px' }}>📂</p>
+          <p style={{ fontSize: 32, margin: '0 0 10px' }}>\ud83d\udcc1</p>
           <p style={{ fontWeight: 500, margin: '0 0 6px' }}>No sections yet</p>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px' }}>Sections group your test cases.</p>
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px' }}>Sections group test cases. Each section can have nested subsections.</p>
           <Btn onClick={() => setAddingSection(true)}>+ Add section</Btn>
         </div>
       )}
 
-      {sections.map(section => {
-        const sectionCases = cases.filter(c => c.section_id === section.id)
-        const isOpen = !collapsed[section.id]
-        return (
-          <div key={section.id} style={{ marginBottom: 10, border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#f9fafb', borderBottom: isOpen ? '1px solid #e5e7eb' : 'none' }}>
-              <button onClick={() => setCollapsed(p => ({ ...p, [section.id]: !p[section.id] }))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#9ca3af', padding: 0 }}>{isOpen ? '▾' : '▸'}</button>
-              <span style={{ fontWeight: 600, fontSize: 13, flex: 1 }}>{section.name}</span>
-              <span style={{ fontSize: 11, color: '#9ca3af' }}>{sectionCases.length} case{sectionCases.length !== 1 ? 's' : ''}</span>
-              {canEditCases(myRole) && <Btn sm onClick={() => setAddingCaseTo(section.id)}>+ Add case</Btn>}
-              <button onClick={() => deleteSection(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px' }}>✕</button>
-            </div>
-            {isOpen && (
-              <div>
-                {sectionCases.map((tc, i) => {
-                  const pb = PRIORITY_BADGE[tc.priority]
-                  return (
-                    <div key={tc.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none' }}>
-                      <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', paddingTop: 2, minWidth: 48 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <button onClick={() => onViewCase(tc)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 500, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit", textAlign: "left" }}>{tc.title}</button>
-                          <Badge {...pb} />
-                          <span style={{ fontSize: 11, color: '#9ca3af', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>{tc.type}</span>
-                        </div>
-                        {tc.description && <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280' }}>{tc.description}</p>}
-                      </div>
-                      {canEditCases(myRole) && <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                        <Btn sm onClick={() => setEditingCase(tc)}>Edit</Btn>
-                        <Btn sm onClick={() => deleteCase(tc.id)}>✕</Btn>
-                      </div>}
-                    </div>
-                  )
-                })}
-                {sectionCases.length === 0 && (
-                  <p style={{ fontSize: 12, color: '#9ca3af', padding: '12px 14px', margin: 0 }}>
-                    No test cases — <button onClick={() => setAddingCaseTo(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontSize: 12, textDecoration: 'underline', fontFamily: 'inherit' }}>add one</button>
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        )
-      })}
+      {rootSections.map((section: any) => renderSection(section, 0))}
 
       {addingCaseTo && (
         <CaseModal title="Add test case" projectId={projectId} sectionId={addingCaseTo}
