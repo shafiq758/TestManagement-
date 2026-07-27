@@ -411,9 +411,9 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: depth === 0 ? '#f9fafb' : '#f3f4f6', borderBottom: isOpen && (sectionCases.length > 0 || children.length > 0 || addingSubsectionTo === section.id) ? '1px solid #e5e7eb' : 'none' }}>
             <button onClick={() => setCollapsed(p => ({ ...p, [section.id]: !p[section.id] }))}
               style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#9ca3af', padding: 0, width: 16 }}>
-              {isOpen ? '\u25be' : '\u25b8'}
+              {isOpen ? '▾' : '▸'}
             </button>
-            <span style={{ fontSize: 13 }}>{depth === 0 ? '\ud83d\udcc1' : '\ud83d\udcc2'}</span>
+            <span style={{ fontSize: 13 }}>{depth === 0 ? '📁' : '📂'}</span>
             <span style={{ fontWeight: depth === 0 ? 600 : 500, fontSize: 13, flex: 1, color: '#111' }}>{section.name}</span>
             <span style={{ fontSize: 11, color: '#9ca3af' }}>
               {sectionCases.length} case{sectionCases.length !== 1 ? 's' : ''}
@@ -423,7 +423,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
               <>
                 <Btn sm onClick={() => setAddingCaseTo(section.id)}>+ Case</Btn>
                 <Btn sm onClick={() => { setAddingSubsectionTo(section.id); setSubsectionName('') }}>+ Subsection</Btn>
-                <button onClick={() => deleteSection(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px' }}>\u2715</button>
+                <button onClick={() => deleteSection(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px' }}>✕</button>
               </>
             )}
           </div>
@@ -460,7 +460,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
                     {canEdit && (
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                         <Btn sm onClick={() => setEditingCase(tc)}>Edit</Btn>
-                        <Btn sm onClick={() => deleteCase(tc.id)}>\u2715</Btn>
+                        <Btn sm onClick={() => deleteCase(tc.id)}>✕</Btn>
                       </div>
                     )}
                   </div>
@@ -468,7 +468,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
               })}
               {sectionCases.length === 0 && children.length === 0 && addingSubsectionTo !== section.id && (
                 <p style={{ fontSize: 12, color: '#9ca3af', padding: '10px 12px', margin: 0 }}>
-                  Empty \u2014 <button onClick={() => setAddingCaseTo(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontSize: 12, textDecoration: 'underline', fontFamily: 'inherit' }}>add a test case</button>
+                  Empty — <button onClick={() => setAddingCaseTo(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontSize: 12, textDecoration: 'underline', fontFamily: 'inherit' }}>add a test case</button>
                 </p>
               )}
             </div>
@@ -481,9 +481,9 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{total} test case{total !== 1 ? 's' : ''} \u00b7 {sections.length} section{sections.length !== 1 ? 's' : ''}</p>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{total} test case{total !== 1 ? 's' : ''} · {sections.length} section{sections.length !== 1 ? 's' : ''}</p>
         <div style={{ display: 'flex', gap: 6 }}>
-          <Btn onClick={() => setShowImportExport(true)} sm>\u2195 Import / Export</Btn>
+          <Btn onClick={() => setShowImportExport(true)} sm>↕ Import / Export</Btn>
           {canEdit && <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>}
         </div>
       </div>
@@ -499,7 +499,7 @@ function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, m
 
       {rootSections.length === 0 && !addingSection && (
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <p style={{ fontSize: 32, margin: '0 0 10px' }}>\ud83d\udcc1</p>
+          <p style={{ fontSize: 32, margin: '0 0 10px' }}>📁</p>
           <p style={{ fontWeight: 500, margin: '0 0 6px' }}>No sections yet</p>
           <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px' }}>Sections group test cases. Each section can have nested subsections.</p>
           <Btn onClick={() => setAddingSection(true)}>+ Add section</Btn>
