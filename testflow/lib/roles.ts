@@ -28,6 +28,6 @@ export const INVITABLE_ROLES: WorkspaceRole[] = ['editor', 'tester', 'viewer']
 export const CHANGEABLE_ROLES_FOR_INVITED: WorkspaceRole[] = ['editor', 'tester', 'viewer']
 
 export function canManageMembers(role: WorkspaceRole)  { return role === 'admin' }
-export function canCreateProjects(role: WorkspaceRole) { return role === 'admin' || role === 'editor' }
+export function canCreateProjects(role: WorkspaceRole) { return role === 'admin' }
 export function canEditCases(role: WorkspaceRole)      { return role === 'admin' || role === 'editor' }
 export function canExecuteRuns(role: WorkspaceRole)    { return role === 'admin' || role === 'editor' || role === 'tester' }
