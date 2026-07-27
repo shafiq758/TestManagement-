@@ -470,7 +470,7 @@ export default function DocEditorPage() {
       <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
         <button onClick={() => router.push(`/dashboard/docs/${projectId}`)}
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', fontFamily: 'inherit', padding: 0 }}>
-          ← Docs
+          ← PRD
         </button>
         {docType === 'prd' && (
           <span style={{ fontSize: 11, background: '#f5f3ff', color: '#7c3aed', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>📋 PRD</span>
