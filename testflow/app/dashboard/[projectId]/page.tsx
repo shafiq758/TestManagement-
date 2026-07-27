@@ -261,7 +261,7 @@ export default function ProjectPage() {
           {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones'], ['bugs', 'Bugs'], ['members', 'Members']] as const).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t as any)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#111' : '#6b7280', padding: '8px 16px', borderBottom: tab === t ? '2px solid #111' : '2px solid transparent', marginBottom: -1 }}>{label}</button>
           ))}
-          <a href={`/dashboard/docs/${projectId}`} style={{ fontSize: 13, color: tab === 'prd' ? '#111' : '#6b7280', textDecoration: 'none', padding: '8px 16px', borderBottom: tab === 'prd' ? '2px solid #111' : '2px solid transparent', display: 'inline-flex', alignItems: 'center', marginBottom: -1, fontWeight: tab === 'prd' ? 600 : 400 }}>📋 PRD</a>
+          <a href={`/dashboard/docs/${projectId}`} style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none', padding: '8px 16px', borderBottom: '2px solid transparent', display: 'inline-flex', alignItems: 'center', marginBottom: -1 }}>📋 PRD</a>
           <a href={`/dashboard/reports/${projectId}`} style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none', padding: '8px 16px', borderBottom: '2px solid transparent', display: 'inline-flex', alignItems: 'center', marginBottom: -1 }}>📊 Reports</a>
         </div>
       </div>
