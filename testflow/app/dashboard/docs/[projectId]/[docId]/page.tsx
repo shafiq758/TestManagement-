@@ -1,945 +1,1398 @@
 'use client'
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback } from 'react'
+import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { canEditCases } from '@/lib/roles'
-import type { WorkspaceRole } from '@/types'
-import dynamic from 'next/dynamic'
+import { canEditCases, canExecuteRuns, canCreateProjects } from '@/lib/roles'
+import MilestonesTab from '@/components/MilestonesTab'
+import SprintsTab from '@/components/SprintsTab'
+import BugsTab from '@/components/BugsTab'
+import AttachmentUploader, { type Attachment } from '@/components/AttachmentUploader'
+import ImportExportModal from '@/components/ImportExportModal'
 import MentionInput from '@/components/MentionInput'
+import InlineComments from '@/components/InlineComments'
+import ProjectMembersTab from '@/components/ProjectMembersTab'
+import type { Bug } from '@/types'
+import type { Project, Section, TestCase, TestRun, Priority, CaseType, RunStatus, WorkspaceRole } from '@/types'
 
-// Load editor dynamically to avoid SSR issues
-const RichEditor = dynamic(() => import('@/components/RichEditor'), { ssr: false, loading: () => (
-  <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, minHeight: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>Loading editor…</div>
-)})
+function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={onClose} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 480, background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ padding: '20px', flex: 1 }}>{children}</div>
+      </div>
+    </div>
+  )
+}
 
-export default function DocEditorPage() {
-  const params = useParams()
-  const router = useRouter()
-  const projectId = params.projectId as string
-  const docId = params.docId as string
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  if (!value) return null
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{value}</div>
+    </div>
+  )
+}
 
-  const [doc, setDoc] = useState<any>(null)
-  const [docType, setDocType] = useState<'plain' | 'prd'>('plain')
-  const [prdMeta, setPrdMeta] = useState({ category: '', status: 'Draft', authorName: '', createdAt: '', updatedAt: '' })
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState<any>({})
-  const [sprints, setSprints] = useState<any[]>([])
-  const [milestones, setMilestones] = useState<any[]>([])
-  const [selectedSprintId, setSelectedSprintId] = useState('')
-  const [selectedMilestoneId, setSelectedMilestoneId] = useState('')
-  const [myRole, setMyRole] = useState<WorkspaceRole>('viewer')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(true)
-  const [showVersions, setShowVersions] = useState(false)
-  const [versions, setVersions] = useState<any[]>([])
-  const [previewVersion, setPreviewVersion] = useState<any | null>(null)
-  const [showPublishModal, setShowPublishModal] = useState(false)
-  const [visibility, setVisibility] = useState<'private' | 'team'>('private')
-  const [commentAccess, setCommentAccess] = useState<'all' | 'editors' | 'none'>('all')
-  const [published, setPublished] = useState(false)
-  const [isAuthor, setIsAuthor] = useState(false)
-  const [userId, setUserId] = useState('')
-  const [showCommentModal, setShowCommentModal] = useState(false)
-  const [pendingComment, setPendingComment] = useState<{text: string; from: number; to: number} | null>(null)
-  const [commentText, setCommentText] = useState('')
-  const [comments, setComments] = useState<any[]>([])
-  const [members, setMembers] = useState<any[]>([])
-  const [replies, setReplies] = useState<Record<string, any[]>>({})
-  const [replyText, setReplyText] = useState<Record<string, string>>({})
-  const [showReplyInput, setShowReplyInput] = useState<Record<string, boolean>>({})
+function GlobalDrawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={onClose} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 480, background: '#fff', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#fff', flexShrink: 0 }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ padding: '20px', flex: 1, overflowY: 'auto' }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function GDRow({ label, value }: { label: string; value?: React.ReactNode }) {
+  if (!value) return null
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</p>
+      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{value}</div>
+    </div>
+  )
+}
+
+function Btn({ children, onClick, primary, sm, disabled, style = {} }: any) {
+  return (
+    <button onClick={disabled ? undefined : onClick} disabled={disabled}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, border: primary ? 'none' : '1px solid #d1d5db', borderRadius: 7, padding: sm ? '5px 10px' : '7px 14px', fontSize: sm ? 12 : 13, fontWeight: primary ? 500 : 400, background: primary ? '#111' : '#fff', color: primary ? '#fff' : '#374151', cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, whiteSpace: 'nowrap', ...style }}>{children}</button>
+  )
+}
+
+function Inp({ value, onChange, placeholder, type = 'text', onKeyDown, autoFocus, style = {} }: any) {
+  return (
+    <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} type={type} onKeyDown={onKeyDown} autoFocus={autoFocus}
+      style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', width: '100%', background: '#fff', ...style }} />
+  )
+}
+
+function Textarea({ value, onChange, placeholder, rows = 3, members }: any) {
+  if (members && members.length > 0) {
+    return <MentionInput value={value} onChange={onChange} members={members} placeholder={placeholder} rows={rows} />
+  }
+  return (
+    <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
+      style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', width: '100%', resize: 'vertical', background: '#fff', fontFamily: 'inherit' }} />
+  )
+}
+
+function Sel({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 10px', fontSize: 13, outline: 'none', background: '#fff', cursor: 'pointer' }}>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  )
+}
+
+function Field({ label, children, required }: any) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 5 }}>
+        {label}{required && <span style={{ color: '#ef4444' }}> *</span>}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+function Modal({ title, onClose, children, width = 500 }: any) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', width: '100%', maxWidth: width, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid #f3f4f6' }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ padding: 18 }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function Badge({ label, color, textColor }: { label: string; color: string; textColor: string }) {
+  return <span style={{ background: color, color: textColor, fontSize: 11, fontWeight: 500, padding: '2px 7px', borderRadius: 5 }}>{label}</span>
+}
+
+const PRIORITY_BADGE: Record<Priority, any> = {
+  high: { label: 'High', color: '#fef2f2', textColor: '#dc2626' },
+  medium: { label: 'Medium', color: '#fffbeb', textColor: '#d97706' },
+  low: { label: 'Low', color: '#f0fdf4', textColor: '#16a34a' },
+}
+
+const STATUS_BTN: Record<string, { bg: string; color: string }> = {
+  pass: { bg: '#dcfce7', color: '#15803d' },
+  fail: { bg: '#fee2e2', color: '#dc2626' },
+  skip: { bg: '#fef9c3', color: '#ca8a04' },
+  untested: { bg: '#f3f4f6', color: '#6b7280' },
+}
+
+export default function ProjectPage() {
+  const { projectId } = useParams() as { projectId: string }
+  const [project, setProject] = useState<Project | null>(null)
+  const [sections, setSections] = useState<Section[]>([])
+  const [cases, setCases] = useState<TestCase[]>([])
+  const [runs, setRuns] = useState<TestRun[]>([])
+  const [projectMembers, setProjectMembers] = useState<any[]>([])
+  const [mentionMembers, setMentionMembers] = useState<any[]>([])
+  const [tab, setTab] = useState<'cases' | 'runs' | 'sprints' | 'milestones' | 'bugs' | 'members'>('cases')
   const [loading, setLoading] = useState(true)
-  const [editorKey, setEditorKey] = useState(0)
-  const [attachments, setAttachments] = useState<any[]>([])
-  const [uploadingFile, setUploadingFile] = useState(false)
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [myRole, setMyRole] = useState<WorkspaceRole>('viewer')
+  const [milestones, setMilestones] = useState<any[]>([])
+  const [sprints, setSprints] = useState<any[]>([])
+  const [testPlans, setTestPlans] = useState<any[]>([])
+  const [bugs, setBugs] = useState<Bug[]>([])
+  const [execHistory, setExecHistory] = useState<any[]>([])
+
+  const [navStack, setNavStack] = useState<Array<{type: string; data: any; extra?: any}>>([])
+  const [globalCommentModal, setGlobalCommentModal] = useState<{runId: string; caseId: string; status: RunStatus} | null>(null)
+
   const sb = createClient()
 
-  useEffect(() => { load() }, [docId])
+  const pushNav = (type: string, data: any, extra?: any) => setNavStack(p => [...p, {type, data, extra}])
+  const popNav = () => setNavStack(p => p.slice(0, -1))
+  const goToIndex = (i: number) => setNavStack(p => p.slice(0, i + 1))
+  const clearNav = () => setNavStack([])
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    setLoading(true)
     const { data: { session } } = await sb.auth.getSession()
-    if (!session) { router.replace('/auth'); return }
-
-    const [{ data: docData }, { data: sprs }, { data: mils }, { data: projData }, { data: comms }, { data: membersData }] = await Promise.all([
-      sb.from('documents').select('*').eq('id', docId).single(),
-      sb.from('sprints').select('*').eq('project_id', projectId),
-      sb.from('milestones').select('*').eq('project_id', projectId),
-      sb.from('projects').select('workspace_id').eq('id', projectId).single(),
-      sb.from('document_comments').select('*').eq('document_id', docId).order('created_at'),
-      sb.from('project_members').select('user_id, role').eq('project_id', projectId),
-    ])
-
-    if (!docData) { router.push(`/dashboard/docs/${projectId}`); return }
-
-    const uid = session.user.id
-    setUserId(uid)
-    setDoc(docData)
-    setDocType(docData.doc_type || 'plain')
-    // Get author display name
-    let authorName = docData.prd_author || ''
-    if (!authorName) {
-      if (docData.created_by === session.user.id) {
-        // Current user is author - use their metadata
-        authorName = session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Unknown'
-        // Save it for future viewers
-        await sb.from('documents').update({ prd_author: authorName }).eq('id', docData.id)
-      } else {
-        // Look up author from workspace_members directly
-        const { data: authorWm } = await sb.from('workspace_members').select('invited_email, display_name').eq('user_id', docData.created_by).single()
-        authorName = (authorWm as any)?.display_name || (authorWm as any)?.invited_email || 'Unknown'
+    if (session) {
+      const { data: mem } = await sb.from('workspace_members').select('role').eq('user_id', session.user.id).eq('status', 'active').single()
+      const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+      if (proj) {
+        const { data: allMembers } = await sb.from('workspace_members')
+          .select('user_id, invited_email, display_name')
+          .eq('workspace_id', proj.workspace_id)
+        const mapped = (allMembers || []).map((m: any) => ({
+          id: m.user_id,
+          email: m.invited_email,
+          name: m.display_name || m.invited_email?.split('@')[0]
+        }))
+        setMentionMembers(mapped)
+        if (typeof window !== 'undefined') {
+          (window as any).__testflow_members = mapped
+        }
       }
+      if (mem) setMyRole(mem.role)
     }
-    setPrdMeta({
-      category: docData.prd_category || '',
-      status: docData.prd_status || 'Draft',
-      authorName,
-      createdAt: docData.created_at ? new Date(docData.created_at).toLocaleString() : '',
-      updatedAt: docData.updated_at ? new Date(docData.updated_at).toLocaleString() : '',
-    })
-    setTitle(docData.title)
-    setContent(docData.content || {})
-    setSelectedSprintId(docData.sprint_id || '')
-    setSelectedMilestoneId(docData.milestone_id || '')
-    setVisibility(docData.visibility || 'private')
-    setCommentAccess(docData.comment_access || 'all')
-    setPublished(docData.published || false)
-    setIsAuthor(docData.created_by === uid)
-    setSprints(sprs || [])
-    setMilestones(mils || [])
-    // Get correct role for this workspace
-    const workspaceId = projData?.workspace_id
-    let memberRole: WorkspaceRole = 'viewer'
-    if (workspaceId) {
-      const { data: memberData } = await sb.from('workspace_members')
-        .select('role').eq('user_id', session.user.id).eq('workspace_id', workspaceId).single()
-      memberRole = (memberData?.role || 'viewer') as WorkspaceRole
-    }
-    setMyRole(memberRole)
-    // Fetch workspace members to get emails/names for project members
-    const pmUserIds = (membersData || []).map((m: any) => m.user_id)
-    let enrichedMembers: any[] = []
-    if (pmUserIds.length > 0) {
-      const { data: wmData } = await sb.from('workspace_members')
-        .select('user_id, invited_email, display_name')
-        .in('user_id', pmUserIds)
-      enrichedMembers = (membersData || []).map((m: any) => {
-        const wm = (wmData || []).find((w: any) => w.user_id === m.user_id)
-        return { id: m.user_id, email: wm?.invited_email || '', name: wm?.display_name || wm?.invited_email?.split('@')[0] || '' }
-      }).filter((m: any) => m.email)
-    }
-    setMembers(enrichedMembers)
-    if (typeof window !== 'undefined') {
-      (window as any).__testflow_members = enrichedMembers
-    }
-    const commsData = comms || []
-    setComments(commsData)
-    // Load attachments
-    const { data: attachData } = await sb.storage.from('attachments').list(`docs/${docId}`)
-    setAttachments(attachData || [])
-    // Load replies for all comments
-    if (commsData.length > 0) {
-      const { data: repliesData } = await sb.from('document_comment_replies')
-        .select('*').in('comment_id', commsData.map((c: any) => c.id)).order('created_at')
-      const repliesMap: Record<string, any[]> = {}
-      ;(repliesData || []).forEach((r: any) => {
-        if (!repliesMap[r.comment_id]) repliesMap[r.comment_id] = []
-        repliesMap[r.comment_id].push(r)
-      })
-      setReplies(repliesMap)
+    const [{ data: proj }, { data: secs }, { data: tcs }, { data: trs }, { data: mils }, { data: sprs }, { data: plans }, { data: bugsData }] = await Promise.all([
+      sb.from('projects').select('*').eq('id', projectId).single(),
+      sb.from('sections').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('test_cases').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('test_runs').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('milestones').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('sprints').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('test_plans').select('*').eq('project_id', projectId).order('created_at'),
+      sb.from('bugs').select('*').eq('project_id', projectId).order('created_at', {ascending: false}),
+    ])
+    setProject(proj); setSections(secs || []); setCases(tcs || []); setRuns(trs || [])
+    setMilestones(mils || []); setSprints(sprs || []); setTestPlans(plans || [])
+    setBugs((bugsData as any) || [])
+    const runIds = (trs || []).map((r: any) => r.id)
+    if (runIds.length > 0) {
+      const { data: hist } = await sb.from('execution_history').select('*').in('test_run_id', runIds).order('executed_at', {ascending: false})
+      setExecHistory(hist || [])
     }
     setLoading(false)
-    // Debug — remove after fixing
-    console.log('DOC DEBUG:', {
-      published: docData.published,
-      visibility: docData.visibility,
-      comment_access: docData.comment_access,
-      created_by: docData.created_by,
-      uid: session.user.id,
-      isAuthor: docData.created_by === session.user.id,
-      memberRole,
-      workspaceId: projData?.workspace_id,
-    })
-  }
+  }, [projectId])
 
-  const canEdit = isAuthor // only author can edit content
-  const canDelete = isAuthor || myRole === 'admin' // author or admin can delete
-  const canComment = (() => {
-    if (isAuthor) return true // author always can comment
-    if (!published) return false // non-authors can't comment on unpublished docs
-    if (commentAccess === 'none') return false
-    if (commentAccess === 'editors') return myRole === 'admin' || myRole === 'editor'
-    return myRole !== 'viewer' // 'all' — editors and testers can comment, viewers cannot
-  })()
+  useEffect(() => { load() }, [load])
 
-  // Auto-save with debounce
-  const autoSavePrdMeta = useCallback(async (meta: typeof prdMeta) => {
-    await sb.from('documents').update({
-      prd_category: meta.category,
-      prd_status: meta.status,
-      updated_at: new Date().toISOString(),
-    }).eq('id', docId)
-  }, [docId])
-
-  const autoSave = useCallback(async (newTitle: string, newContent: any, sprintId: string, milestoneId: string) => {
-    if (!canEdit) return
-    clearTimeout(saveTimer.current)
-    setSaved(false)
-    saveTimer.current = setTimeout(async () => {
-      setSaving(true)
-      const { data: { session } } = await sb.auth.getSession()
-      await sb.from('documents').update({
-        title: newTitle,
-        content: newContent,
-        sprint_id: sprintId || null,
-        milestone_id: milestoneId || null,
-        updated_by: session?.user.id,
-        updated_at: new Date().toISOString(),
-      }).eq('id', docId)
-      setSaving(false)
-      setSaved(true)
-    }, 1500)
-  }, [docId, canEdit])
-
-  const handleTitleChange = (val: string) => {
-    setTitle(val)
-    autoSave(val, content, selectedSprintId, selectedMilestoneId)
-  }
-
-  const handleContentChange = (val: any) => {
-    setContent(val)
-    autoSave(title, val, selectedSprintId, selectedMilestoneId)
-  }
-
-  const handleSprintChange = (val: string) => {
-    setSelectedSprintId(val)
-    autoSave(title, content, val, selectedMilestoneId)
-  }
-
-  const handleMilestoneChange = (val: string) => {
-    setSelectedMilestoneId(val)
-    autoSave(title, content, selectedSprintId, val)
-  }
-
-  // Save version manually
-  const importFile = async (file: File) => {
-    const ext = file.name.split('.').pop()?.toLowerCase()
-    try {
-      let paragraphs: any[] = []
-      let newTitle = title
-
-      if (ext === 'txt') {
-        const text = await file.text()
-        const lines = text.split('\n')
-        paragraphs = lines.map((line: string) => ({
-          type: 'paragraph',
-          attrs: { textAlign: null },
-          content: line.trim() ? [{ type: 'text', text: line }] : undefined
-        }))
-
-      } else if (ext === 'docx' || ext === 'doc') {
-        const { default: mammoth } = await import('mammoth')
-        const arrayBuffer = await file.arrayBuffer()
-        const result = await mammoth.convertToHtml({ arrayBuffer })
-        // Parse HTML to extract structured content
-        const div = document.createElement('div')
-        div.innerHTML = result.value
-        paragraphs = []
-        div.childNodes.forEach((node: any) => {
-          if (node.nodeType === 1) {
-            const tag = node.tagName?.toLowerCase()
-            const text = node.textContent?.trim()
-            if (!text) return
-            if (tag === 'h1') paragraphs.push({ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text }] })
-            else if (tag === 'h2') paragraphs.push({ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text }] })
-            else if (tag === 'h3') paragraphs.push({ type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text }] })
-            else if (tag === 'ul') {
-              node.querySelectorAll('li').forEach((li: any) => {
-                paragraphs.push({ type: 'bulletList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: li.textContent?.trim() }] }] }] })
-              })
-            } else if (tag === 'ol') {
-              node.querySelectorAll('li').forEach((li: any) => {
-                paragraphs.push({ type: 'orderedList', content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: li.textContent?.trim() }] }] }] })
-              })
-            } else {
-              paragraphs.push({ type: 'paragraph', attrs: { textAlign: null }, content: [{ type: 'text', text }] })
-            }
-          }
-        })
-        newTitle = file.name.replace(/\.docx?$/i, '')
-
-      } else if (ext === 'pdf') {
-        const pdfjsLib = await import('pdfjs-dist')
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
-        const arrayBuffer = await file.arrayBuffer()
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-        let fullText = ''
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i)
-          const textContent = await page.getTextContent()
-          let lastY = -1
-          textContent.items.forEach((item: any) => {
-            if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) fullText += '\n'
-            fullText += item.str
-            lastY = item.transform[5]
-          })
-          fullText += '\n'
-        }
-        const lines = fullText.split('\n')
-        paragraphs = lines.map((line: string) => ({
-          type: 'paragraph',
-          attrs: { textAlign: null },
-          content: line.trim() ? [{ type: 'text', text: line.trim() }] : undefined
-        }))
-        newTitle = file.name.replace(/\.pdf$/i, '')
-      } else {
-        alert('Supported formats: .txt, .docx, .pdf')
-        return
+  // ── AUTO-OPEN FROM NOTIFICATION CLICK ──
+  const openFromUrl = useCallback(() => {
+    const params = new URLSearchParams(window.location.search)
+    const openType = params.get('open')
+    const openId = params.get('id')
+    if (!openType || !openId) return
+    // Clear URL params immediately so next notification click works
+    window.history.replaceState({}, '', window.location.pathname)
+    if (openType === 'case') {
+      const tc = cases.find((c: any) => c.id === openId)
+      if (tc) {
+        const sec = sections.find((s: any) => s.id === tc.section_id)
+        setNavStack([{ type: 'case', data: { ...tc, sectionName: sec?.name || '' } }])
       }
-
-      if (paragraphs.length === 0) {
-        alert('No content found in file.')
-        return
-      }
-
-      const newContent = { type: 'doc', content: paragraphs }
-      setTitle(newTitle)
-      setContent(newContent)
-      setEditorKey(k => k + 1) // Force editor remount with new content
-      autoSave(newTitle, newContent, selectedSprintId, selectedMilestoneId)
-
-    } catch (err) {
-      console.error('Import failed:', err)
-      alert('Import failed. Please try again.')
+    } else if (openType === 'bug') {
+      const bug = bugs.find((b: any) => b.id === openId)
+      if (bug) setNavStack([{ type: 'bug', data: bug }])
     }
-  }
+  }, [cases, bugs, sections])
 
-  const publishDoc = async (vis: string, ca: string, pub: boolean) => {
-    const { data: { session } } = await sb.auth.getSession()
-    // Save author display name at publish time so others can see it
-    const authorDisplayName = session?.user.user_metadata?.name || session?.user.email?.split('@')[0] || 'Unknown'
-    await sb.from('documents').update({
-      visibility: vis,
-      comment_access: ca,
-      published: pub,
-      prd_author: authorDisplayName,
-      updated_at: new Date().toISOString(),
-    }).eq('id', docId)
-    setPrdMeta(p => ({ ...p, authorName: authorDisplayName }))
-    setVisibility(vis as any)
-    setCommentAccess(ca as any)
-    setPublished(pub)
-    setShowPublishModal(false)
-  }
+  useEffect(() => {
+    if (loading) return
+    openFromUrl()
+  }, [loading, openFromUrl])
 
-  const saveVersion = async () => {
-    const { data: { session } } = await sb.auth.getSession()
-    await sb.from('document_versions').insert({
-      document_id: docId,
-      title,
-      content,
-      saved_by: session?.user.id,
-    })
-    loadVersions()
-  }
-
-  const loadVersions = async () => {
-    const { data } = await sb.from('document_versions').select('*').eq('document_id', docId).order('created_at', { ascending: false })
-    setVersions(data || [])
-  }
-
-  const restoreVersion = async (version: any) => {
-    if (!confirm('Restore this version? Current content will be replaced.')) return
-    setTitle(version.title)
-    setContent(version.content)
-    await sb.from('documents').update({ title: version.title, content: version.content, updated_at: new Date().toISOString() }).eq('id', docId)
-    setShowVersions(false)
-    setSaved(true)
-  }
-
-  // Handle highlight comment
-  const handleHighlightComment = (text: string, from: number, to: number) => {
-    setPendingComment({ text: text || '(General comment)', from, to })
-    setCommentText('')
-    setShowCommentModal(true)
-  }
-
-  // Send notification for @mentions
-  const sendMentionNotifications = async (text: string, link: string, type = 'mention') => {
-    if (!text.includes('@')) return
-    try {
-      const { data: { session } } = await sb.auth.getSession()
-      const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
-      if (!proj || !session) return
-      await fetch('/api/notifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text, projectId, docId, type, link,
-          createdBy: session.user.id,
-          workspaceId: proj.workspace_id,
-        }),
-      })
-    } catch(e) { console.error('Notification error:', e) }
-  }
-
-  const submitComment = async () => {
-    if (!pendingComment || !commentText.trim()) return
-    const { data: { session } } = await sb.auth.getSession()
-    const { data: newComment } = await sb.from('document_comments').insert({
-      document_id: docId,
-      comment_text: commentText.trim(),
-      highlighted_text: pendingComment.text,
-      position_from: pendingComment.from,
-      position_to: pendingComment.to,
-      created_by: session?.user.id,
-    }).select().single()
-    if (newComment) setComments(p => [...p, newComment])
-    setShowCommentModal(false)
-    setPendingComment(null)
-    // Send mention notifications
-    console.log('Comment submitted, checking for mentions. Text:', commentText, 'Has @:', commentText.includes('@'))
-    if (commentText.includes('@')) {
-      const link = `/dashboard/docs/${projectId}/${docId}`
-      console.log('Sending mention notification for:', commentText)
-      await sendMentionNotifications(commentText, link, 'comment')
+  // Listen for notification navigation events (same-page clicks)
+  useEffect(() => {
+    const handleNotificationNav = () => {
+      setTimeout(() => openFromUrl(), 50)
     }
-  }
-
-  const uploadAttachment = async (file: File) => {
-    setUploadingFile(true)
-    const path = `docs/${docId}/${Date.now()}_${file.name}`
-    const { error } = await sb.storage.from('attachments').upload(path, file)
-    if (!error) {
-      const { data: { publicUrl } } = sb.storage.from('attachments').getPublicUrl(path)
-      setAttachments(p => [...p, { name: file.name, url: publicUrl, path, size: file.size, type: file.type }])
+    window.addEventListener('notification-navigate', handleNotificationNav)
+    window.addEventListener('popstate', handleNotificationNav)
+    return () => {
+      window.removeEventListener('notification-navigate', handleNotificationNav)
+      window.removeEventListener('popstate', handleNotificationNav)
     }
-    setUploadingFile(false)
-  }
+  }, [openFromUrl])
 
-  const deleteAttachment = async (path: string) => {
-    if (!confirm('Delete this attachment?')) return
-    await sb.storage.from('attachments').remove([path])
-    setAttachments(p => p.filter((a: any) => a.name !== path.split('/').pop()))
-  }
-
-  const submitReply = async (commentId: string) => {
-    const text = replyText[commentId]?.trim()
-    if (!text) return
-    const { data: { session } } = await sb.auth.getSession()
-    const { data: newReply } = await sb.from('document_comment_replies').insert({
-      comment_id: commentId,
-      reply_text: text,
-      created_by: session?.user.id,
-    }).select().single()
-    if (newReply) {
-      setReplies(p => ({ ...p, [commentId]: [...(p[commentId] || []), newReply] }))
-      setReplyText(p => ({ ...p, [commentId]: '' }))
-      setShowReplyInput(p => ({ ...p, [commentId]: false }))
-      // Send mention notifications for replies
-      const replyTxt = replyText[commentId] || ''
-      console.log('Reply submitted, checking for mentions:', replyTxt)
-      if (replyTxt.includes('@')) {
-        const link = `/dashboard/docs/${projectId}/${docId}`
-        await sendMentionNotifications(replyTxt, link, 'reply')
-      }
-    }
-  }
-
-  const resolveComment = async (commentId: string) => {
-    await sb.from('document_comments').update({ resolved: true }).eq('id', commentId)
-    setComments(p => p.map(c => c.id === commentId ? { ...c, resolved: true } : c))
-  }
-
-  const openComments = !comments.filter(c => !c.resolved).length === false
-
-  // Access control - redirect if unpublished and not author
-  if (!loading && doc && !doc.published && !isAuthor) {
-    router.push(`/dashboard/docs/${projectId}`)
-    return null
-  }
-
-  if (loading) return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af' }}>Loading…</div>
-  )
-
-  const selStyle: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 10px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }
+  if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}><p style={{ color: '#9ca3af', fontSize: 13 }}>Loading…</p></div>
+  if (!project) return <div style={{ padding: 24 }}><p style={{ color: '#ef4444' }}>Project not found.</p></div>
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Top bar */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-        <button onClick={() => router.push(`/dashboard/docs/${projectId}`)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#6b7280', fontFamily: 'inherit', padding: 0 }}>
-          ← Docs
-        </button>
-        {docType === 'prd' && (
-          <span style={{ fontSize: 11, background: '#f5f3ff', color: '#7c3aed', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>📋 PRD</span>
-        )}
-        <span style={{ color: '#e5e7eb' }}>|</span>
-
-        {/* Save status */}
-        <span style={{ fontSize: 12, color: saving ? '#d97706' : saved ? '#16a34a' : '#9ca3af' }}>
-          {saving ? '⏳ Saving…' : saved ? '✓ Saved' : '• Unsaved'}
-        </span>
-
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            {isAuthor && (
-            <>
-              {/* Import file button */}
-              <label style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 12, background: '#fff', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                📥 Import file
-                <input type="file" accept=".docx,.doc,.txt,.pdf" style={{ display: 'none' }}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    await importFile(file)
-                    e.target.value = ''
-                  }} />
-              </label>
-              <button onClick={saveVersion} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
-                📌 Save version
-              </button>
-              <button onClick={() => setShowPublishModal(true)}
-                style={{ border: `1px solid ${published ? '#16a34a' : '#d1d5db'}`, borderRadius: 7, padding: '6px 12px', fontSize: 12, background: published ? '#f0fdf4' : '#fff', color: published ? '#16a34a' : '#374151', cursor: 'pointer', fontWeight: published ? 600 : 400 }}>
-                {published ? '✓ Published' : '🌐 Publish'}
-              </button>
-            </>
-          )}
-          <button onClick={() => { setShowVersions(true); loadVersions() }}
-            style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
-            🕐 History
-          </button>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#fff' }}>
+      <div style={{ padding: '18px 26px 0', borderBottom: '1px solid #e5e7eb' }}>
+        <h1 style={{ margin: '0 0 14px', fontSize: 18, fontWeight: 600 }}>{project.name}</h1>
+        <div style={{ display: 'flex', gap: 0 }}>
+          {([['cases', 'Test cases'], ['runs', 'Test runs'], ['sprints', 'Sprints'], ['milestones', 'Milestones'], ['bugs', 'Bugs'], ['members', 'Members']] as const).map(([t, label]) => (
+            <button key={t} onClick={() => setTab(t as any)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#111' : '#6b7280', padding: '8px 16px', borderBottom: tab === t ? '2px solid #111' : '2px solid transparent', marginBottom: -1 }}>{label}</button>
+          ))}
+          <a href={`/dashboard/reports/${projectId}`} style={{ fontSize: 13, color: '#6b7280', textDecoration: 'none', padding: '8px 16px', borderBottom: '2px solid transparent', display: 'inline-flex', alignItems: 'center', marginBottom: -1 }}>📊 Reports</a>
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-        {/* Main editor area */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '32px 40px' }}>
-          {/* Title */}
-          {canEdit ? (
-            <input value={title} onChange={e => handleTitleChange(e.target.value)}
-              placeholder="Document title"
-              style={{ width: '100%', border: 'none', outline: 'none', fontSize: 28, fontWeight: 700, marginBottom: 20, fontFamily: 'inherit', background: 'transparent', color: '#111' }} />
-          ) : (
-            <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 20, color: '#111' }}>{title}</h1>
-          )}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '22px 26px' }}>
+        {tab === 'cases' && (
+          <CasesTab sections={sections} cases={cases} projectId={projectId}
+            myRole={myRole} onRefresh={load} onViewCase={(tc) => pushNav('case', tc)} mentionMembers={mentionMembers} />
+        )}
+        {tab === 'runs' && (
+          <RunsTab runs={runs} cases={cases} sections={sections} sprints={sprints} testPlans={testPlans} projectId={projectId}
+            myRole={myRole} onRefresh={load} bugs={bugs} execHistory={execHistory} mentionMembers={mentionMembers}
+            onViewRun={(run) => pushNav('run', run)}
+            onViewRunCase={(tc, results, runId, bugsArr) => pushNav('runcase', tc, {results, runId, bugs: bugsArr || bugs})} />
+        )}
+        {tab === 'sprints' && (
+          <SprintsTab sprints={sprints} milestones={milestones} testPlans={testPlans}
+            cases={cases} sections={sections} projectId={projectId}
+            canEdit={canEditCases(myRole)} onRefresh={load}
+            onViewSprint={(s) => pushNav('sprint', s)}
+            onViewPlan={(p) => pushNav('plan', p)}
+            onViewCase={(tc, bugsArr) => pushNav('case', tc, {bugs: bugsArr})}
+            bugs={bugs} />
+        )}
+        {tab === 'milestones' && (
+          <MilestonesTab milestones={milestones} projectId={projectId}
+            canEdit={canEditCases(myRole)} onRefresh={load} onViewMilestone={(m) => pushNav('milestone', m)} />
+        )}
+        {tab === 'members' && (
+          <ProjectMembersTab projectId={projectId} workspaceId={project?.workspace_id || ''} myRole={myRole} isAdmin={myRole === 'admin'} />
+        )}
+        {tab === 'bugs' && (
+          <BugsTab bugs={bugs} projectId={projectId} sprints={sprints}
+            testRuns={runs} testCases={cases}
+            canEdit={canEditCases(myRole)} onRefresh={load} onViewBug={(b) => pushNav("bug", b)} members={mentionMembers} />
+        )}
+      </div>
 
-          {/* PRD Metadata Table */}
-          {docType === 'prd' && (
-            <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginBottom: 24 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <tbody>
-                  {[
-                    { label: 'Created by', value: prdMeta.authorName || 'Unknown', editable: false, icon: '👤' },
-                    { label: 'Created time', value: prdMeta.createdAt, editable: false, icon: '🕐' },
-                    { label: 'Category', value: prdMeta.category, editable: true, field: 'category', icon: '📂' },
-                    { label: 'Last updated', value: prdMeta.updatedAt, editable: false, icon: '✏️' },
-                    { label: 'Status', value: prdMeta.status, editable: true, field: 'status', icon: '🔄', isStatus: true },
-                  ].map((row, i) => (
-                    <tr key={row.label} style={{ borderBottom: i < 4 ? '1px solid #e5e7eb' : 'none' }}>
-                      <td style={{ padding: '8px 14px', background: '#fafafa', color: '#6b7280', fontSize: 12, width: 140, borderRight: '1px solid #e5e7eb' }}>
-                        <span style={{ marginRight: 6 }}>{row.icon}</span>{row.label}
-                      </td>
-                      <td style={{ padding: '8px 14px' }}>
-                        {row.isStatus && canEdit ? (
-                          <select value={prdMeta.status} onChange={e => { setPrdMeta(p => ({ ...p, status: e.target.value })); autoSavePrdMeta({ ...prdMeta, status: e.target.value }) }}
-                            style={{ border: 'none', outline: 'none', fontSize: 13, cursor: 'pointer', background: 'transparent', fontFamily: 'inherit' }}>
-                            {['Draft', 'In Progress', 'Review', 'Approved', 'Deprecated'].map(s => <option key={s}>{s}</option>)}
-                          </select>
-                        ) : row.isStatus ? (
-                          <span style={{ background: prdMeta.status === 'Approved' ? '#dcfce7' : prdMeta.status === 'In Progress' ? '#eff6ff' : prdMeta.status === 'Review' ? '#fef9c3' : '#f3f4f6', color: prdMeta.status === 'Approved' ? '#15803d' : prdMeta.status === 'In Progress' ? '#2563eb' : prdMeta.status === 'Review' ? '#ca8a04' : '#374151', padding: '2px 8px', borderRadius: 4, fontSize: 12, fontWeight: 500 }}>{prdMeta.status}</span>
-                        ) : row.editable && canEdit ? (
-                          <input value={prdMeta[row.field as keyof typeof prdMeta]} onChange={e => { setPrdMeta(p => ({ ...p, [row.field!]: e.target.value })); autoSavePrdMeta({ ...prdMeta, [row.field!]: e.target.value }) }}
-                            placeholder={`Add ${row.label.toLowerCase()}…`}
-                            style={{ border: 'none', outline: 'none', fontSize: 13, width: '100%', fontFamily: 'inherit', background: 'transparent' }} />
-                        ) : (
-                          <span style={{ color: row.value ? '#111' : '#9ca3af' }}>{row.value || '—'}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {globalCommentModal && (
+        <FailCommentModal
+          status={globalCommentModal.status}
+          runId={globalCommentModal.runId}
+          caseId={globalCommentModal.caseId}
+          allBugs={bugs}
+          projectId={projectId}
+          sprints={sprints}
+          runs={runs}
+          cases={cases}
+          onConfirm={async (comment) => {
+            const run = runs.find(r => r.id === globalCommentModal.runId)
+            if (!run) return
+            const sb = createClient()
+            const results = { ...run.results, [globalCommentModal.caseId]: globalCommentModal.status }
+            await sb.from('test_runs').update({ results }).eq('id', globalCommentModal.runId)
+            const { data: { session } } = await sb.auth.getSession()
+            await sb.from('execution_history').insert({
+              test_run_id: globalCommentModal.runId,
+              test_case_id: globalCommentModal.caseId,
+              status: globalCommentModal.status,
+              comment: comment.trim(),
+              executed_by: session?.user?.id,
+            })
+            load()
+            setGlobalCommentModal(null)
+          }}
+          onClose={() => setGlobalCommentModal(null)}
+        />
+      )}
 
-          {/* Sprint/Milestone Metadata row */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 12, color: '#9ca3af' }}>🏃 Sprint</span>
-              {canEdit ? (
-                <select value={selectedSprintId} onChange={e => handleSprintChange(e.target.value)} style={selStyle}>
-                  <option value="">None</option>
-                  {sprints.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              ) : (
-                <span style={{ fontSize: 12, color: '#374151' }}>{sprints.find(s => s.id === selectedSprintId)?.name || '—'}</span>
-              )}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 12, color: '#9ca3af' }}>🎯 Milestone</span>
-              {canEdit ? (
-                <select value={selectedMilestoneId} onChange={e => handleMilestoneChange(e.target.value)} style={selStyle}>
-                  <option value="">None</option>
-                  {milestones.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </select>
-              ) : (
-                <span style={{ fontSize: 12, color: '#374151' }}>{milestones.find(m => m.id === selectedMilestoneId)?.name || '—'}</span>
-              )}
-            </div>
-            {/* Comment access indicator */}
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-              {canComment ? (
-                <span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: 4, fontWeight: 500 }}>
-                  💬 Comments enabled (role: {myRole})
-                </span>
-              ) : (
-                <span style={{ fontSize: 11, background: '#f3f4f6', color: '#9ca3af', padding: '2px 8px', borderRadius: 4 }}>
-                  {!published && !isAuthor ? '🔒 Not published' : commentAccess === 'none' ? '💬 Comments off' : '👁 View only'}
-                </span>
-              )}
-            </div>
+      {navStack.length > 0 && <DrillDown
+        stack={navStack}
+        cases={cases} sections={sections} sprints={sprints}
+        testPlans={testPlans} runs={runs} milestones={milestones} bugs={bugs}
+        myRole={myRole}
+        onPush={pushNav} onPop={popNav} onGoTo={goToIndex} onClose={clearNav}
+        onViewBug={(b) => pushNav("bug", b)}
+        onShowComment={(runId, caseId, status) => setGlobalCommentModal({ runId, caseId, status })}
+        onUpdateRunResult={async (runId, caseId, status) => {
+          const run = runs.find(r => r.id === runId)
+          if (!run) return
+          const sb = createClient()
+          await sb.from('test_runs').update({ results: { ...run.results, [caseId]: status } }).eq('id', runId)
+          load()
+        }}
+      />}
+    </div>
+  )
+}
+
+function CasesTab({ sections, cases, projectId, myRole, onRefresh, onViewCase, mentionMembers = [] }: { sections: Section[]; cases: TestCase[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewCase: (tc: any) => void; mentionMembers?: any[] }) {
+  const [addingSection, setAddingSection] = useState(false)
+  const [addingSubsectionTo, setAddingSubsectionTo] = useState<string | null>(null)
+  const [sectionName, setSectionName] = useState('')
+  const [subsectionName, setSubsectionName] = useState('')
+  const [addingCaseTo, setAddingCaseTo] = useState<string | null>(null)
+  const [editingCase, setEditingCase] = useState<TestCase | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [showImportExport, setShowImportExport] = useState(false)
+  const canEdit = canEditCases(myRole)
+  const sb = createClient()
+
+  const rootSections = sections.filter(s => !(s as any).parent_id)
+  const getChildren = (parentId: string) => sections.filter(s => (s as any).parent_id === parentId)
+  const getAllDescendantIds = (sectionId: string): string[] => {
+    const children = getChildren(sectionId)
+    return [sectionId, ...children.flatMap((c: any) => getAllDescendantIds(c.id))]
+  }
+
+  const createSection = async () => {
+    if (!sectionName.trim()) return
+    await sb.from('sections').insert({ name: sectionName.trim(), project_id: projectId, parent_id: null, depth: 0 })
+    setSectionName(''); setAddingSection(false); onRefresh()
+  }
+
+  const createSubsection = async (parentId: string) => {
+    if (!subsectionName.trim()) return
+    const parent = sections.find(s => s.id === parentId)
+    const depth = ((parent as any)?.depth || 0) + 1
+    await sb.from('sections').insert({ name: subsectionName.trim(), project_id: projectId, parent_id: parentId, depth })
+    setSubsectionName(''); setAddingSubsectionTo(null); onRefresh()
+  }
+
+  const deleteSection = async (id: string) => {
+    if (!confirm('Delete this section and all its subsections and test cases?')) return
+    const allIds = getAllDescendantIds(id)
+    for (const sid of allIds) await sb.from('test_cases').delete().eq('section_id', sid)
+    for (const sid of [...allIds].reverse()) await sb.from('sections').delete().eq('id', sid)
+    onRefresh()
+  }
+
+  const deleteCase = async (id: string) => {
+    if (!confirm('Delete this test case?')) return
+    await sb.from('test_cases').delete().eq('id', id)
+    onRefresh()
+  }
+
+  const total = cases.length
+
+  const renderSection = (section: Section, depth: number = 0): React.ReactNode => {
+    const sectionCases = cases.filter(c => c.section_id === section.id)
+    const children = getChildren(section.id)
+    const isOpen = !collapsed[section.id]
+    const indent = depth * 20
+
+    return (
+      <div key={section.id} style={{ marginBottom: 6 }}>
+        <div style={{ border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden', marginLeft: indent }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', background: depth === 0 ? '#f9fafb' : '#f3f4f6', borderBottom: isOpen && (sectionCases.length > 0 || children.length > 0 || addingSubsectionTo === section.id) ? '1px solid #e5e7eb' : 'none' }}>
+            <button onClick={() => setCollapsed(p => ({ ...p, [section.id]: !p[section.id] }))}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, color: '#9ca3af', padding: 0, width: 16 }}>
+              {isOpen ? '\u25be' : '\u25b8'}
+            </button>
+            <span style={{ fontSize: 13 }}>{depth === 0 ? '\ud83d\udcc1' : '\ud83d\udcc2'}</span>
+            <span style={{ fontWeight: depth === 0 ? 600 : 500, fontSize: 13, flex: 1, color: '#111' }}>{section.name}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af' }}>
+              {sectionCases.length} case{sectionCases.length !== 1 ? 's' : ''}
+              {children.length > 0 && ` · ${children.length} subsection${children.length !== 1 ? 's' : ''}`}
+            </span>
+            {canEdit && (
+              <>
+                <Btn sm onClick={() => setAddingCaseTo(section.id)}>+ Case</Btn>
+                <Btn sm onClick={() => { setAddingSubsectionTo(section.id); setSubsectionName('') }}>+ Subsection</Btn>
+                <button onClick={() => deleteSection(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db', padding: '2px 4px' }}>\u2715</button>
+              </>
+            )}
           </div>
 
-          {/* Attachments section */}
-          <div style={{ marginTop: 24, borderTop: '1px solid #e5e7eb', paddingTop: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#374151' }}>📎 Attachments ({attachments.length})</p>
-              {canEdit && (
-                <label style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
-                  {uploadingFile ? 'Uploading…' : '+ Upload file'}
-                  <input type="file" style={{ display: 'none' }} disabled={uploadingFile}
-                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadAttachment(f); e.target.value = '' }} />
-                </label>
-              )}
+          {addingSubsectionTo === section.id && (
+            <div style={{ display: 'flex', gap: 6, padding: '8px 12px', background: '#eff6ff', borderBottom: '1px solid #dbeafe' }}>
+              <Inp value={subsectionName} onChange={setSubsectionName} placeholder="Subsection name" autoFocus
+                onKeyDown={(e: any) => { if (e.key === 'Enter') createSubsection(section.id); if (e.key === 'Escape') setAddingSubsectionTo(null) }} />
+              <Btn onClick={() => createSubsection(section.id)} primary sm>Save</Btn>
+              <Btn onClick={() => setAddingSubsectionTo(null)} sm>Cancel</Btn>
             </div>
-            {attachments.length === 0 && (
-              <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No attachments yet.</p>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {attachments.map((att: any, i: number) => {
-                const isImage = att.metadata?.mimetype?.startsWith('image/') || att.name?.match(/\.(png|jpg|jpeg|gif|webp)$/i)
-                const isPdf = att.name?.match(/\.pdf$/i)
-                const icon = isImage ? '🖼' : isPdf ? '📄' : '📎'
-                const url = att.url || sb.storage.from('attachments').getPublicUrl(`docs/${docId}/${att.name}`).data.publicUrl
+          )}
+
+          {isOpen && (
+            <div>
+              {children.length > 0 && (
+                <div style={{ padding: '6px 8px' }}>
+                  {children.map((child: any) => renderSection(child, depth + 1))}
+                </div>
+              )}
+              {sectionCases.map((tc: any, i: number) => {
+                const pb = PRIORITY_BADGE[tc.priority]
                 return (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                    <span style={{ fontSize: 18 }}>{icon}</span>
-                    <a href={url} target="_blank" rel="noreferrer"
-                      style={{ flex: 1, fontSize: 13, color: '#2563eb', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {att.name}
-                    </a>
-                    {att.metadata?.size && (
-                      <span style={{ fontSize: 11, color: '#9ca3af' }}>{(att.metadata.size / 1024).toFixed(0)}KB</span>
-                    )}
+                  <div key={tc.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 12px', borderTop: '1px solid #f3f4f6' }}>
+                    <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', paddingTop: 2, minWidth: 48 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <button onClick={() => onViewCase(tc)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 500, color: "#111", textDecoration: "underline", textDecorationColor: "#d1d5db", fontFamily: "inherit", textAlign: "left" }}>{tc.title}</button>
+                        <Badge {...pb} />
+                        <span style={{ fontSize: 11, color: '#9ca3af', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4 }}>{tc.type}</span>
+                      </div>
+                      {tc.description && <p style={{ margin: '3px 0 0', fontSize: 12, color: '#6b7280' }}>{tc.description}</p>}
+                    </div>
                     {canEdit && (
-                      <button onClick={() => deleteAttachment(`docs/${docId}/${att.name}`)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', fontSize: 16, padding: 0, flexShrink: 0 }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#dc2626'}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#d1d5db'}>✕</button>
+                      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                        <Btn sm onClick={() => setEditingCase(tc)}>Edit</Btn>
+                        <Btn sm onClick={() => deleteCase(tc.id)}>\u2715</Btn>
+                      </div>
                     )}
                   </div>
                 )
               })}
-            </div>
-          </div>
-
-          {/* Comment bar for non-editors who can comment */}
-          {canComment && !canEdit && (
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 13, color: '#2563eb' }}>💬 You can comment on this document</span>
-              <button onClick={() => {
-                setPendingComment({ text: '(General comment)', from: 0, to: 0 })
-                setCommentText('')
-                setShowCommentModal(true)
-              }} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>
-                + Add comment
-              </button>
-            </div>
-          )}
-
-          {/* Editor */}
-          <RichEditor
-            key={`editor-${canComment}-${canEdit}-${editorKey}`}
-            content={content}
-            onChange={handleContentChange}
-            onHighlightComment={canComment ? handleHighlightComment : undefined}
-            editable={canEdit}
-            canComment={canComment}
-            placeholder="Start writing your document…"
-          />
-        </div>
-
-        {/* Comments sidebar */}
-        {comments.filter(c => !c.resolved).length > 0 && (
-          <div style={{ width: 280, borderLeft: '1px solid #e5e7eb', background: '#fafafa', overflowY: 'auto', padding: 16, flexShrink: 0 }}>
-            <p style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600 }}>💬 Comments ({comments.filter(c => !c.resolved).length})</p>
-            {comments.filter(c => !c.resolved).map(comment => (
-              <div key={comment.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 12, marginBottom: 10 }}>
-                {comment.highlighted_text && comment.highlighted_text !== '(General comment)' && (
-                  <div style={{ background: '#fef9c3', borderRadius: 4, padding: '3px 8px', fontSize: 12, color: '#92400e', marginBottom: 8, fontStyle: 'italic' }}>
-                    "{comment.highlighted_text}"
-                  </div>
-                )}
-                <p style={{ margin: '0 0 8px', fontSize: 13, color: '#374151' }}>{comment.comment_text}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(comment.created_at).toLocaleDateString()}</span>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {canComment && (
-                      <button onClick={() => setShowReplyInput(p => ({ ...p, [comment.id]: !p[comment.id] }))}
-                        style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer', color: '#6b7280' }}>
-                        ↩ Reply
-                      </button>
-                    )}
-                    {isAuthor && (
-                      <button onClick={() => resolveComment(comment.id)}
-                        style={{ background: 'none', border: '1px solid #d1d5db', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer', color: '#6b7280' }}>
-                        ✓ Resolve
-                      </button>
-                    )}
-                  </div>
-                </div>
-                {/* Replies */}
-                {(replies[comment.id] || []).map((reply: any) => (
-                  <div key={reply.id} style={{ marginLeft: 12, paddingLeft: 10, borderLeft: '2px solid #e5e7eb', marginBottom: 6 }}>
-                    <p style={{ margin: '0 0 2px', fontSize: 12, color: '#374151' }}>{reply.reply_text}</p>
-                    <span style={{ fontSize: 10, color: '#9ca3af' }}>{new Date(reply.created_at).toLocaleDateString()}</span>
-                  </div>
-                ))}
-                {/* Reply input */}
-                {showReplyInput[comment.id] && (
-                  <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-                    <div style={{ flex: 1 }}>
-                      <MentionInput
-                        value={replyText[comment.id] || ''}
-                        onChange={val => setReplyText(p => ({ ...p, [comment.id]: val }))}
-                        onKeyDown={e => e.key === 'Enter' && !e.shiftKey && submitReply(comment.id)}
-                        members={members}
-                        placeholder="Reply… @ to mention"
-                        rows={1}
-                      />
-                    </div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button onClick={() => { setShowReplyInput(p => ({ ...p, [comment.id]: false })); setReplyText(p => ({ ...p, [comment.id]: '' })) }}
-                        style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', background: '#fff', color: '#6b7280' }}>
-                        Cancel
-                      </button>
-                      <button onClick={() => submitReply(comment.id)}
-                        style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer' }}>
-                        Send
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Comment modal */}
-      {showCommentModal && pendingComment && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 380, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600 }}>Add comment</h3>
-            <div style={{ background: '#fef9c3', borderRadius: 6, padding: '6px 10px', fontSize: 13, color: '#92400e', marginBottom: 12, fontStyle: 'italic' }}>
-              "{pendingComment.text}"
-            </div>
-            <MentionInput
-              value={commentText}
-              onChange={setCommentText}
-              members={members}
-              placeholder="Write your comment… type @ to mention someone"
-              rows={3}
-              style={{ resize: 'vertical' }}
-            />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
-              <button onClick={() => { setShowCommentModal(false); setPendingComment(null) }}
-                style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={submitComment} disabled={!commentText.trim()}
-                style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 500, cursor: commentText.trim() ? 'pointer' : 'not-allowed', opacity: commentText.trim() ? 1 : 0.5 }}>
-                Add comment
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Publish modal */}
-      {showPublishModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, width: 420, boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600 }}>🌐 Publish document</h3>
-            <div style={{ marginBottom: 20 }}>
-              <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: '#374151' }}>Who can see this document?</p>
-              {[
-                { value: 'private', label: 'Private', desc: 'Only you can see it', icon: '🔒' },
-                { value: 'team', label: 'Team', desc: 'All workspace members can view', icon: '👥' },
-              ].map(opt => (
-                <div key={opt.value} onClick={() => setVisibility(opt.value as any)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, border: `1px solid ${visibility === opt.value ? '#2563eb' : '#e5e7eb'}`, background: visibility === opt.value ? '#eff6ff' : '#fff', cursor: 'pointer', marginBottom: 8 }}>
-                  <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${visibility === opt.value ? '#2563eb' : '#d1d5db'}`, background: visibility === opt.value ? '#2563eb' : '#fff', flexShrink: 0 }} />
-                  <div>
-                    <p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: 500 }}>{opt.icon} {opt.label}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{opt.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginBottom: 20 }}>
-              <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 500, color: '#374151' }}>Who can comment?</p>
-              {[
-                { value: 'all', label: 'All members', desc: 'Anyone with access can comment' },
-                { value: 'editors', label: 'Editors only', desc: 'Only admins and editors' },
-                { value: 'none', label: 'No comments', desc: 'Disable comments on this doc' },
-              ].map(opt => (
-                <div key={opt.value} onClick={() => setCommentAccess(opt.value as any)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderRadius: 8, border: `1px solid ${commentAccess === opt.value ? '#2563eb' : '#e5e7eb'}`, background: commentAccess === opt.value ? '#eff6ff' : '#fff', cursor: 'pointer', marginBottom: 6 }}>
-                  <div style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${commentAccess === opt.value ? '#2563eb' : '#d1d5db'}`, background: commentAccess === opt.value ? '#2563eb' : '#fff', flexShrink: 0 }} />
-                  <div>
-                    <p style={{ margin: '0 0 1px', fontSize: 13, fontWeight: 500 }}>{opt.label}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{opt.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowPublishModal(false)} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={() => publishDoc(visibility, commentAccess, true)}
-                style={{ background: '#16a34a', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
-                ✓ Publish
-              </button>
-              {published && (
-                <button onClick={() => publishDoc('private', commentAccess, false)}
-                  style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
-                  Unpublish
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Version preview modal */}
-      {previewVersion && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: 24 }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 720, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e5e7eb' }}>
-              <div>
-                <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 600 }}>{previewVersion.title}</p>
-                <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>Saved {new Date(previewVersion.created_at).toLocaleString()}</p>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {isAuthor && (
-                  <button onClick={() => { restoreVersion(previewVersion); setPreviewVersion(null) }}
-                    style={{ background: '#111', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 13, cursor: 'pointer' }}>
-                    Restore this version
-                  </button>
-                )}
-                <button onClick={() => setPreviewVersion(null)} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Close</button>
-              </div>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
-              <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 20 }}>{previewVersion.title}</h1>
-              {/* Render content using read-only editor */}
-              <VersionPreview content={previewVersion.content} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Version history panel */}
-      {showVersions && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: 480, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 8px 32px rgba(0,0,0,0.15)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid #e5e7eb' }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>🕐 Version History</h3>
-              <button onClick={() => setShowVersions(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: '#9ca3af' }}>×</button>
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
-              {versions.length === 0 && (
-                <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: '24px 0' }}>
-                  No saved versions yet. Click "Save version" to create a snapshot.
+              {sectionCases.length === 0 && children.length === 0 && addingSubsectionTo !== section.id && (
+                <p style={{ fontSize: 12, color: '#9ca3af', padding: '10px 12px', margin: 0 }}>
+                  Empty \u2014 <button onClick={() => setAddingCaseTo(section.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#111', fontSize: 12, textDecoration: 'underline', fontFamily: 'inherit' }}>add a test case</button>
                 </p>
               )}
-              {versions.map((v, i) => (
-                <div key={v.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: i < versions.length - 1 ? '1px solid #f3f4f6' : 'none' }}>
-                  <div>
-                    <p style={{ margin: '0 0 2px', fontSize: 14, fontWeight: 500 }}>{v.title}</p>
-                    <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{new Date(v.created_at).toLocaleString()}</p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => setPreviewVersion(v)}
-                      style={{ border: '1px solid #d1d5db', borderRadius: 6, padding: '5px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
-                      Preview
-                    </button>
-                    {isAuthor && (
-                      <button onClick={() => restoreVersion(v)}
-                        style={{ border: '1px solid #111', borderRadius: 6, padding: '5px 12px', fontSize: 12, background: '#fff', cursor: 'pointer' }}>
-                        Restore
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
             </div>
-          </div>
+          )}
         </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{total} test case{total !== 1 ? 's' : ''} \u00b7 {sections.length} section{sections.length !== 1 ? 's' : ''}</p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Btn onClick={() => setShowImportExport(true)} sm>\u2195 Import / Export</Btn>
+          {canEdit && <Btn onClick={() => setAddingSection(true)} sm>+ Add section</Btn>}
+        </div>
+      </div>
+
+      {addingSection && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: 10 }}>
+          <Inp value={sectionName} onChange={setSectionName} placeholder="Section name" autoFocus
+            onKeyDown={(e: any) => { if (e.key === 'Enter') createSection(); if (e.key === 'Escape') setAddingSection(false) }} />
+          <Btn onClick={createSection} primary sm>Save</Btn>
+          <Btn onClick={() => setAddingSection(false)} sm>Cancel</Btn>
+        </div>
+      )}
+
+      {rootSections.length === 0 && !addingSection && (
+        <div style={{ textAlign: 'center', padding: '48px 0' }}>
+          <p style={{ fontSize: 32, margin: '0 0 10px' }}>\ud83d\udcc1</p>
+          <p style={{ fontWeight: 500, margin: '0 0 6px' }}>No sections yet</p>
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px' }}>Sections group test cases. Each section can have nested subsections.</p>
+          <Btn onClick={() => setAddingSection(true)}>+ Add section</Btn>
+        </div>
+      )}
+
+      {rootSections.map((section: any) => renderSection(section, 0))}
+
+      {addingCaseTo && (
+        <CaseModal title="Add test case" projectId={projectId} sectionId={addingCaseTo}
+          mentionMembers={typeof window !== 'undefined' ? (window as any).__testflow_members || [] : []}
+          onSave={() => { setAddingCaseTo(null); onRefresh() }} onClose={() => setAddingCaseTo(null)} />
+      )}
+      {showImportExport && (
+        <ImportExportModal projectId={projectId} sections={sections} cases={cases} onRefresh={onRefresh} onClose={() => setShowImportExport(false)} />
+      )}
+      {editingCase && (
+        <CaseModal title="Edit test case" projectId={projectId} sectionId={editingCase.section_id}
+          initial={editingCase}
+          mentionMembers={typeof window !== 'undefined' ? (window as any).__testflow_members || [] : []}
+          onSave={() => { setEditingCase(null); onRefresh() }} onClose={() => setEditingCase(null)} />
       )}
     </div>
   )
 }
 
-// ─── Version Preview Component ─────────────────────────────────────────────
-function VersionPreview({ content }: { content: any }) {
-  if (!content || Object.keys(content).length === 0) {
-    return <p style={{ color: '#9ca3af', fontStyle: 'italic' }}>Empty document</p>
-  }
+function CaseModal({ title, projectId, sectionId, initial, onSave, onClose, mentionMembers = [] }: any) {
+  const [form, setForm] = useState({
+    title: initial?.title || '',
+    description: initial?.description || '',
+    steps: initial?.steps || '',
+    expected_result: initial?.expected_result || '',
+    priority: (initial?.priority || 'medium') as Priority,
+    type: (initial?.type || 'functional') as CaseType,
+    attachments: (initial?.attachments || []).map((url: string, i: number) => ({
+      url, name: `attachment-${i+1}`,
+      type: (url.match(/\.(mp4|webm|mov)$/i) ? 'video' : 'image') as 'image'|'video',
+    })) as Attachment[],
+  })
+  const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }))
+  const sb = createClient()
 
-  const renderNode = (node: any): React.ReactNode => {
-    if (!node) return null
-
-    const children = node.content?.map((child: any, i: number) => (
-      <span key={i}>{renderNode(child)}</span>
-    ))
-
-    const marks = node.marks || []
-    let text: React.ReactNode = node.text || children
-
-    marks.forEach((mark: any) => {
-      if (mark.type === 'bold') text = <strong>{text}</strong>
-      if (mark.type === 'italic') text = <em>{text}</em>
-      if (mark.type === 'underline') text = <u>{text}</u>
-      if (mark.type === 'strike') text = <s>{text}</s>
-      if (mark.type === 'highlight') text = <mark style={{ background: '#fef9c3', padding: '1px 0' }}>{text}</mark>
-      if (mark.type === 'code') text = <code style={{ background: '#f3f4f6', padding: '1px 5px', borderRadius: 3, fontFamily: 'monospace', fontSize: 13 }}>{text}</code>
-    })
-
-    switch (node.type) {
-      case 'doc': return <div>{children}</div>
-      case 'paragraph': return <p style={{ margin: '0 0 8px', textAlign: node.attrs?.textAlign || 'left' }}>{children || <br />}</p>
-      case 'heading': {
-        const level = node.attrs?.level || 1
-        const sizes: Record<number, string> = { 1: '24px', 2: '20px', 3: '16px' }
-        const weights: Record<number, number> = { 1: 700, 2: 600, 3: 600 }
-        return <div style={{ fontSize: sizes[level] || '16px', fontWeight: weights[level] || 600, margin: '16px 0 6px' }}>{children}</div>
-      }
-      case 'bulletList': return <ul style={{ paddingLeft: 24, margin: '0 0 8px' }}>{children}</ul>
-      case 'orderedList': return <ol style={{ paddingLeft: 24, margin: '0 0 8px' }}>{children}</ol>
-      case 'listItem': return <li style={{ marginBottom: 2 }}>{children}</li>
-      case 'blockquote': return <blockquote style={{ borderLeft: '3px solid #e5e7eb', paddingLeft: 16, color: '#6b7280', margin: '8px 0' }}>{children}</blockquote>
-      case 'codeBlock': return <pre style={{ background: '#1e1e2e', color: '#cdd6f4', padding: 16, borderRadius: 8, overflow: 'auto', margin: '8px 0', fontSize: 13 }}><code>{children}</code></pre>
-      case 'hardBreak': return <br />
-      case 'horizontalRule': return <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '16px 0' }} />
-      case 'image': return <img src={node.attrs?.src} alt={node.attrs?.alt || ''} style={{ maxWidth: '100%', borderRadius: 8, margin: '8px 0' }} />
-      case 'text': return text
-      default: return <span>{children}</span>
+  const save = async () => {
+    if (!form.title.trim()) return
+    const payload = {
+      title: form.title, description: form.description, steps: form.steps,
+      expected_result: form.expected_result, priority: form.priority, type: form.type,
+      attachments: form.attachments.map((a: Attachment) => a.url),
     }
+    let caseId = initial?.id
+    if (initial) {
+      await sb.from('test_cases').update(payload).eq('id', initial.id)
+    } else {
+      const { data: newCase } = await sb.from('test_cases').insert({ ...payload, section_id: sectionId, project_id: projectId }).select().single()
+      caseId = newCase?.id
+    }
+    // Send mention notifications
+    const mentionText = [form.description, form.steps, form.expected_result].join(' ')
+    if (mentionText.includes('@') && caseId) {
+      try {
+        const { data: { session } } = await sb.auth.getSession()
+        const { data: proj } = await sb.from('projects').select('workspace_id').eq('id', projectId).single()
+        if (proj && session) {
+          await fetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: mentionText, projectId, type: 'mention',
+              link: `/dashboard/${projectId}?open=case&id=${caseId}`,
+              createdBy: session.user.id,
+              workspaceId: proj.workspace_id,
+            }),
+          })
+        }
+      } catch(e) { console.error('Notification error:', e) }
+    }
+    onSave()
   }
 
   return (
-    <div style={{ fontSize: 14, lineHeight: 1.7, color: '#111' }}>
-      {renderNode(content)}
+    <Modal title={title} onClose={onClose}>
+      <Field label="Title" required><Inp value={form.title} onChange={(v: string) => set('title', v)} placeholder="Test case title" autoFocus /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 5 }}>Priority</label>
+          <Sel value={form.priority} onChange={v => set('priority', v)} options={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 5 }}>Type</label>
+          <Sel value={form.type} onChange={v => set('type', v)} options={[{ value: 'functional', label: 'Functional' }, { value: 'regression', label: 'Regression' }, { value: 'smoke', label: 'Smoke' }, { value: 'integration', label: 'Integration' }]} />
+        </div>
+      </div>
+      <Field label="Description"><Textarea value={form.description} onChange={(v: string) => set('description', v)} placeholder="Brief description" rows={2} members={mentionMembers} /></Field>
+      <Field label="Steps to reproduce"><Textarea value={form.steps} onChange={(v: string) => set('steps', v)} placeholder={"1. Navigate to...\n2. Click...\n3. Verify..."} rows={4} /></Field>
+      <Field label="Expected result"><Textarea value={form.expected_result} onChange={(v: string) => set('expected_result', v)} placeholder="What should happen?" rows={2} /></Field>
+      <Field label="Attachments (optional)">
+        <AttachmentUploader attachments={form.attachments} onChange={(atts: Attachment[]) => set('attachments', atts)} folder="test-cases" />
+      </Field>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn primary onClick={save} disabled={!form.title.trim()}>Save</Btn>
+      </div>
+    </Modal>
+  )
+}
+
+function RunsTab({ runs, cases, sections, sprints, testPlans, projectId, myRole, onRefresh, onViewRun, onViewRunCase, bugs, execHistory, mentionMembers = [] }: { runs: TestRun[]; cases: TestCase[]; sections: Section[]; sprints: any[]; testPlans: any[]; projectId: string; myRole: WorkspaceRole; onRefresh: () => void; onViewRun: (run: TestRun) => void; onViewRunCase: (tc: any, results: Record<string, RunStatus>, runId: string, bugs?: any[]) => void; bugs: any[]; execHistory: any[]; mentionMembers?: any[] }) {
+  const [creating, setCreating] = useState(false)
+  const [activeRun, setActiveRun] = useState<string | null>(null)
+  const [commentModal, setCommentModal] = useState<{runId: string; caseId: string; status: RunStatus} | null>(null)
+  const [commentText, setCommentText] = useState('')
+  const sb = createClient()
+
+  const createRun = async (name: string, caseIds: string[], sprintId: string, planId: string) => {
+    await sb.from('test_runs').insert({ name, case_ids: caseIds, results: {}, project_id: projectId, sprint_id: sprintId, plan_id: planId })
+    setCreating(false); onRefresh()
+  }
+
+  const updateResult = async (runId: string, caseId: string, status: RunStatus, comment: string = '') => {
+    const run = runs.find(r => r.id === runId)
+    if (!run) return
+    const results = { ...run.results, [caseId]: status }
+    await sb.from('test_runs').update({ results }).eq('id', runId)
+    const { data: { session } } = await sb.auth.getSession()
+    await sb.from('execution_history').insert({ test_run_id: runId, test_case_id: caseId, status, comment: comment.trim(), executed_by: session?.user?.id })
+    onRefresh()
+  }
+
+  const bulkUpdateResults = async (runId: string, caseIds: string[], status: RunStatus) => {
+    const run = runs.find(r => r.id === runId)
+    if (!run) return
+    const results = { ...run.results }
+    caseIds.forEach(id => { results[id] = status })
+    await sb.from('test_runs').update({ results }).eq('id', runId)
+    onRefresh()
+  }
+
+  const deleteRun = async (id: string) => {
+    if (!confirm('Delete this test run?')) return
+    await sb.from('test_runs').delete().eq('id', id)
+    onRefresh()
+  }
+
+  const allCasesWithSection = cases.map(c => ({ ...c, sectionName: sections.find(s => s.id === c.section_id)?.name || '' }))
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+        <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>{runs.length} run{runs.length !== 1 ? 's' : ''}</p>
+        {canExecuteRuns(myRole) && <Btn onClick={() => setCreating(true)} sm disabled={testPlans.length === 0}>▶ New test run</Btn>}
+      </div>
+
+      {sprints.length === 0 && <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>Create a Sprint and Test Plan first — test runs must be linked to a test plan.</div>}
+      {sprints.length > 0 && testPlans.length === 0 && <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#92400e', marginBottom: 16 }}>Create a Test Plan inside a sprint first before starting a test run.</div>}
+
+      {runs.length === 0 && testPlans.length > 0 && (
+        <div style={{ textAlign: 'center', padding: '48px 0' }}>
+          <p style={{ fontSize: 32, margin: '0 0 10px' }}>▶</p>
+          <p style={{ fontWeight: 500, margin: '0 0 6px' }}>No test runs yet</p>
+          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 14px' }}>Select a sprint and test plan to create your first run.</p>
+          {canExecuteRuns(myRole) && <Btn onClick={() => setCreating(true)}>▶ New test run</Btn>}
+        </div>
+      )}
+
+      {runs.map(run => {
+        const runCases = allCasesWithSection.filter(c => run.case_ids.includes(c.id))
+        const results = run.results || {}
+        const passed = runCases.filter(c => results[c.id] === 'pass').length
+        const failed = runCases.filter(c => results[c.id] === 'fail').length
+        const skipped = runCases.filter(c => results[c.id] === 'skip').length
+        const untested = runCases.length - passed - failed - skipped
+        const pct = runCases.length ? Math.round((passed / runCases.length) * 100) : 0
+        const isActive = activeRun === run.id
+
+        return (
+          <div key={run.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#f9fafb' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <button onClick={() => onViewRun(run)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, margin: '0 0 3px', fontWeight: 600, fontSize: 14, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{run.name}</button>
+                <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>
+                  {new Date(run.created_at).toLocaleDateString()} · {runCases.length} cases
+                  {run.sprint_id && sprints.find((s: any) => s.id === run.sprint_id) && <span> · 🏃 {sprints.find((s: any) => s.id === run.sprint_id)?.name}</span>}
+                  {run.plan_id && testPlans.find((p: any) => p.id === run.plan_id) && <span> · 📋 {testPlans.find((p: any) => p.id === run.plan_id)?.name}</span>}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
+                {[['pass', passed, '#16a34a'], ['fail', failed, '#dc2626'], ['skip', skipped, '#ca8a04'], ['—', untested, '#9ca3af']].map(([label, n, color]) => (
+                  <span key={label as string} style={{ color: color as string }}>{n as number} {label}</span>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 64, height: 5, background: '#e5e7eb', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: '#16a34a', transition: 'width 0.3s' }} />
+                </div>
+                <span style={{ fontSize: 12, fontWeight: 600, minWidth: 30 }}>{pct}%</span>
+              </div>
+              <Btn sm onClick={() => setActiveRun(isActive ? null : run.id)}>{isActive ? 'Close' : 'Execute'}</Btn>
+              <button onClick={() => deleteRun(run.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#d1d5db' }}>✕</button>
+            </div>
+
+            {isActive && (
+              <RunExecution run={run} runCases={runCases} results={results}
+                execHistory={execHistory.filter(h => h.test_run_id === run.id)}
+                bugs={bugs}
+                onUpdateResult={updateResult} onBulkUpdate={bulkUpdateResults}
+                onViewCase={(tc) => onViewRunCase(tc, results, run.id, bugs)}
+                onShowComment={(runId, caseId, status) => { setCommentModal({runId, caseId, status}); setCommentText('') }} />
+            )}
+          </div>
+        )
+      })}
+
+      {creating && <CreateRunModal allCases={allCasesWithSection} sprints={sprints} testPlans={testPlans} onSave={createRun} onClose={() => setCreating(false)} />}
+
+      {commentModal && (
+        <FailCommentModal
+          status={commentModal.status}
+          runId={commentModal.runId}
+          caseId={commentModal.caseId}
+          allBugs={bugs}
+          projectId={projectId}
+          sprints={sprints}
+          runs={runs}
+          cases={cases}
+          members={mentionMembers}
+          onConfirm={(comment) => {
+            updateResult(commentModal.runId, commentModal.caseId, commentModal.status, comment)
+            setCommentModal(null)
+          }}
+          onClose={() => setCommentModal(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function CreateRunModal({ allCases, sprints, testPlans, onSave, onClose }: { allCases: any[]; sprints: any[]; testPlans: any[]; onSave: (name: string, ids: string[], sprintId: string, planId: string) => void; onClose: () => void; mentionMembers?: any[] }) {
+  const [name, setName] = useState('')
+  const [sprintId, setSprintId] = useState(sprints[0]?.id || '')
+  const [planId, setPlanId] = useState('')
+  const [search, setSearch] = useState('')
+  const [filterType, setFilterType] = useState('')
+  const [filterPriority, setFilterPriority] = useState('')
+  const [selected, setSelected] = useState<string[]>([])
+  const sprintPlans = testPlans.filter(p => p.sprint_id === sprintId)
+  const handleSprintChange = (sid: string) => { setSprintId(sid); setPlanId(''); setSelected([]) }
+  const handlePlanChange = (pid: string) => { setPlanId(pid); const plan = testPlans.find(p => p.id === pid); setSelected(plan?.case_ids || []) }
+  const toggle = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const planCaseIds = testPlans.find(p => p.id === planId)?.case_ids || []
+  const planCases = planId ? allCases.filter(c => planCaseIds.includes(c.id)) : allCases
+  const filtered = planCases.filter(c => (!search || c.title.toLowerCase().includes(search.toLowerCase())) && (!filterType || c.type === filterType) && (!filterPriority || c.priority === filterPriority))
+  const selStyle: React.CSSProperties = { border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 10px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }
+
+  return (
+    <Modal title="New test run" onClose={onClose} width={580}>
+      <Field label="Run name" required><Inp value={name} onChange={setName} placeholder="e.g. Sprint 1 regression" autoFocus /></Field>
+      <Field label="Sprint" required>
+        <select value={sprintId} onChange={e => handleSprintChange(e.target.value)} style={{ ...selStyle, width: '100%' }}>
+          <option value="">— Select sprint —</option>
+          {sprints.map(s => <option key={s.id} value={s.id}>{s.name} ({s.status})</option>)}
+        </select>
+      </Field>
+      {sprintId && (
+        <Field label="Test plan" required>
+          {sprintPlans.length === 0 ? <p style={{ fontSize: 12, color: '#ef4444', margin: 0 }}>No test plans in this sprint. Create one in the Sprints tab first.</p> : (
+            <select value={planId} onChange={e => handlePlanChange(e.target.value)} style={{ ...selStyle, width: '100%' }}>
+              <option value="">— Select test plan —</option>
+              {sprintPlans.map(p => <option key={p.id} value={p.id}>{p.name} ({p.case_ids.length} cases)</option>)}
+            </select>
+          )}
+        </Field>
+      )}
+      {planId && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <label style={{ fontSize: 12, fontWeight: 500, color: '#6b7280' }}>Test cases ({selected.length} selected)</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={() => setSelected(filtered.map(c => c.id))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#2563eb', fontFamily: 'inherit' }}>Select all</button>
+              <button onClick={() => setSelected([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#6b7280', fontFamily: 'inherit' }}>None</button>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title..." style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 7, padding: '6px 10px', fontSize: 12, outline: 'none' }} />
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={selStyle}><option value="">All types</option><option value="functional">Functional</option><option value="regression">Regression</option><option value="smoke">Smoke</option><option value="integration">Integration</option></select>
+            <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={selStyle}><option value="">All priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+            {filtered.map((tc, i) => (
+              <label key={tc.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', background: selected.includes(tc.id) ? '#eff6ff' : '#fff' }}>
+                <input type="checkbox" checked={selected.includes(tc.id)} onChange={() => toggle(tc.id)} style={{ cursor: 'pointer' }} />
+                <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+                <span style={{ fontSize: 13, flex: 1 }}>{tc.title}</span>
+                <span style={{ fontSize: 11, background: tc.priority === 'high' ? '#fef2f2' : tc.priority === 'medium' ? '#fffbeb' : '#f0fdf4', color: tc.priority === 'high' ? '#dc2626' : tc.priority === 'medium' ? '#d97706' : '#16a34a', padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.type}</span>
+              </label>
+            ))}
+            {filtered.length === 0 && <p style={{ padding: '12px', fontSize: 13, color: '#9ca3af', margin: 0 }}>No cases match filters.</p>}
+          </div>
+          <p style={{ fontSize: 11, color: '#9ca3af', margin: '5px 0 0' }}>{selected.length} of {filtered.length} shown selected</p>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Btn onClick={onClose}>Cancel</Btn>
+        <Btn primary disabled={!name.trim() || !sprintId || !planId || selected.length === 0} onClick={() => onSave(name.trim(), selected, sprintId, planId)}>Create run</Btn>
+      </div>
+    </Modal>
+  )
+}
+
+function RunExecution({ run, runCases, results, execHistory, bugs, onUpdateResult, onBulkUpdate, onViewCase, onShowComment }: { run: TestRun; runCases: any[]; results: Record<string, RunStatus>; execHistory: any[]; bugs: any[]; onUpdateResult: (runId: string, caseId: string, status: RunStatus, comment?: string) => void; onBulkUpdate: (runId: string, caseIds: string[], status: RunStatus) => void; onViewCase: (tc: any) => void; onShowComment: (runId: string, caseId: string, status: RunStatus) => void }) {
+  const [selected, setSelected] = useState<string[]>([])
+  const allSelected = selected.length === runCases.length && runCases.length > 0
+  const someSelected = selected.length > 0
+  const toggleOne = (id: string) => setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
+  const toggleAll = () => setSelected(allSelected ? [] : runCases.map(c => c.id))
+  const bulkSet = (status: RunStatus) => { if (selected.length === 0) return; onBulkUpdate(run.id, selected, status); setSelected([]) }
+  const statusColors: Record<string, { bg: string; color: string }> = { pass: { bg: '#dcfce7', color: '#15803d' }, fail: { bg: '#fee2e2', color: '#dc2626' }, skip: { bg: '#fef9c3', color: '#ca8a04' }, untested: { bg: '#f3f4f6', color: '#6b7280' } }
+
+  return (
+    <>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderTop: '1px solid #f3f4f6', background: someSelected ? '#eff6ff' : '#fafafa' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: '#6b7280' }}>
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} ref={el => { if (el) el.indeterminate = someSelected && !allSelected }} style={{ cursor: 'pointer' }} />
+            {someSelected ? `${selected.length} selected` : 'Select all'}
+          </label>
+          {someSelected && (
+            <>
+              <span style={{ fontSize: 12, color: '#9ca3af' }}>Set as:</span>
+              {(['pass', 'fail', 'skip'] as const).map(s => (
+                <button key={s} onClick={() => bulkSet(s)} style={{ padding: '4px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', borderRadius: 6, border: '1px solid #e5e7eb', background: statusColors[s].bg, color: statusColors[s].color, fontWeight: 600 }}>
+                  {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
+                </button>
+              ))}
+              <button onClick={() => setSelected([])} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', fontFamily: 'inherit', marginLeft: 'auto' }}>Clear selection</button>
+            </>
+          )}
+          {!someSelected && <span style={{ fontSize: 12, color: '#9ca3af' }}>Select cases to bulk update status</span>}
+        </div>
+
+        {runCases.map((tc, i) => {
+          const cur = (results[tc.id] || 'untested') as RunStatus
+          const isSelected = selected.includes(tc.id)
+          const sc = statusColors[cur]
+          const hist = execHistory.filter((h: any) => h.test_case_id === tc.id).slice(0, 5)
+          const hc: Record<string, {bg:string;color:string}> = { pass:{bg:'#dcfce7',color:'#15803d'}, fail:{bg:'#fee2e2',color:'#dc2626'}, skip:{bg:'#fef9c3',color:'#ca8a04'} }
+          return (
+            <div key={tc.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', borderTop: '1px solid #f3f4f6', background: isSelected ? '#eff6ff' : 'transparent', transition: 'background 0.1s' }}>
+                <input type="checkbox" checked={isSelected} onChange={() => toggleOne(tc.id)} style={{ cursor: 'pointer', flexShrink: 0 }} />
+                <span style={{ fontSize: 10, color: '#9ca3af', fontFamily: 'monospace', minWidth: 52 }}>TC-{tc.id.slice(0, 5).toUpperCase()}</span>
+                <button onClick={() => onViewCase(tc)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, flex: 1, color: '#111', textAlign: 'left', textDecoration: 'underline', textDecorationColor: '#d1d5db', fontFamily: 'inherit' }}>{tc.title}</button>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: sc.bg, color: sc.color, minWidth: 54, textAlign: 'center' }}>{cur}</span>
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    {(['pass', 'fail', 'skip'] as const).map(s => (
+                      <button key={s} onClick={() => onShowComment(run.id, tc.id, s)} title={s}
+                        style={{ width: 24, height: 24, fontSize: 12, cursor: 'pointer', borderRadius: 4, border: `1px solid ${cur === s ? statusColors[s].color : '#e5e7eb'}`, background: cur === s ? statusColors[s].bg : '#fff', color: cur === s ? statusColors[s].color : '#9ca3af', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {s === 'pass' ? '✓' : s === 'fail' ? '✗' : '–'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {hist.length > 0 && (
+                <div style={{ padding: '5px 16px 8px 58px', background: '#fafafa', borderTop: '1px solid #f9fafb' }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Execution History</p>
+                  {hist.map((h: any) => (
+                    <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                      <span style={{ background: (hc[h.status]||{bg:'#f3f4f6',color:'#6b7280'}).bg, color: (hc[h.status]||{bg:'#f3f4f6',color:'#6b7280'}).color, fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 3, minWidth: 34, textAlign: 'center' as const }}>{h.status}</span>
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}>{new Date(h.executed_at).toLocaleString()}</span>
+                      {h.comment && <span style={{ fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>"{h.comment}"</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+function DrillDown({ stack, cases, sections, sprints, testPlans, runs, milestones, bugs, myRole, onPush, onPop, onGoTo, onClose, onUpdateRunResult, onViewBug, onShowComment }: {
+  stack: Array<{type: string; data: any; extra?: any}>; cases: any[]; sections: any[]; sprints: any[]; testPlans: any[]; runs: any[]; milestones: any[]; bugs: any[]; myRole: WorkspaceRole; onPush: (type: string, data: any, extra?: any) => void; onPop: () => void; onGoTo: (i: number) => void; onClose: () => void; onUpdateRunResult: (runId: string, caseId: string, status: RunStatus) => void; onViewBug: (b: any) => void; onShowComment?: (runId: string, caseId: string, status: RunStatus) => void
+}) {
+  const current = stack[stack.length - 1]
+
+  const stColors: Record<string, {bg:string;color:string}> = { pass: {bg:'#dcfce7',color:'#15803d'}, fail: {bg:'#fee2e2',color:'#dc2626'}, skip: {bg:'#fef9c3',color:'#ca8a04'}, untested: {bg:'#f3f4f6',color:'#6b7280'} }
+  const milestoneStatusCfg: Record<string, {bg:string;color:string;label:string}> = { open: {bg:'#f3f4f6',color:'#374151',label:'Open'}, in_progress: {bg:'#dbeafe',color:'#1e40af',label:'In Progress'}, closed: {bg:'#d1fae5',color:'#065f46',label:'Closed'} }
+  const sprintStatusCfg: Record<string, {bg:string;color:string;label:string}> = { planned: {bg:'#f3f4f6',color:'#374151',label:'Planned'}, active: {bg:'#dcfce7',color:'#15803d',label:'Active'}, completed: {bg:'#dbeafe',color:'#1e40af',label:'Completed'} }
+  const priorityCfg: Record<string, {bg:string;color:string}> = { high: {bg:'#fef2f2',color:'#dc2626'}, medium: {bg:'#fffbeb',color:'#d97706'}, low: {bg:'#f0fdf4',color:'#16a34a'} }
+  const typeLabel: Record<string, string> = { milestone: '🎯 Milestone', sprint: '🏃 Sprint', plan: '📋 Test Plan', case: '🧪 Test Case', run: '▶ Test Run', runcase: '🧪 Test Case', bug: '🐛 Bug' }
+
+  const renderContent = () => {
+    const { type, data, extra } = current
+
+    if (type === 'milestone') {
+      const linkedSprints = sprints.filter(s => s.milestone_id === data.id)
+      const msc = milestoneStatusCfg[data.status] || milestoneStatusCfg.open
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+            <span style={{ background: msc.bg, color: msc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{msc.label}</span>
+            {data.due_date && <span style={{ fontSize: 11, color: '#6b7280', padding: '2px 8px', background: '#f3f4f6', borderRadius: 5 }}>Due {new Date(data.due_date).toLocaleDateString()}</span>}
+          </div>
+          {data.description && <DDRow label="Description" value={data.description} />}
+          <DDRow label="Created" value={new Date(data.created_at).toLocaleDateString()} />
+          <div style={{ marginTop: 8 }}>
+            <p style={sectionLabel}>Sprints ({linkedSprints.length})</p>
+            {linkedSprints.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No sprints linked to this milestone.</p>}
+            {linkedSprints.map((s, i) => {
+              const sc = sprintStatusCfg[s.status] || sprintStatusCfg.planned
+              const planCount = testPlans.filter(p => p.sprint_id === s.id).length
+              return (
+                <DDCard key={s.id} onClick={() => onPush('sprint', s)} last={i === linkedSprints.length - 1}>
+                  <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{s.name}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{planCount} test plan{planCount !== 1 ? 's' : ''}{s.start_date ? ` · ${new Date(s.start_date).toLocaleDateString()}` : ''}</p></div>
+                  <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{sc.label}</span>
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                </DDCard>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+
+    if (type === 'sprint') {
+      const sprintPlans = testPlans.filter(p => p.sprint_id === data.id)
+      const sprintRuns = runs.filter(r => r.sprint_id === data.id)
+      const milestone = milestones.find(m => m.id === data.milestone_id)
+      const sc = sprintStatusCfg[data.status] || sprintStatusCfg.planned
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{sc.label}</span>
+            {milestone && <span style={{ fontSize: 11, color: '#6b7280', padding: '2px 8px', background: '#f3f4f6', borderRadius: 5 }}>🎯 {milestone.name}</span>}
+          </div>
+          {data.goal && <DDRow label="Goal" value={data.goal} />}
+          {(data.start_date || data.end_date) && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+              {data.start_date && <DDRow label="Start" value={new Date(data.start_date).toLocaleDateString()} />}
+              {data.end_date && <DDRow label="End" value={new Date(data.end_date).toLocaleDateString()} />}
+            </div>
+          )}
+          <div style={{ marginBottom: 20 }}>
+            <p style={sectionLabel}>Test Plans ({sprintPlans.length})</p>
+            {sprintPlans.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No test plans in this sprint.</p>}
+            {sprintPlans.map((plan, i) => (
+              <DDCard key={plan.id} onClick={() => onPush('plan', plan)} last={i === sprintPlans.length - 1}>
+                <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>📋 {plan.name}</p>{plan.description && <p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{plan.description}</p>}</div>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{plan.case_ids.length} cases</span>
+                <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+              </DDCard>
+            ))}
+          </div>
+          {sprintRuns.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <p style={sectionLabel}>Test Runs ({sprintRuns.length})</p>
+              {sprintRuns.map((run, i) => {
+                const res = run.results || {}
+                const passed = run.case_ids.filter((id: string) => res[id] === 'pass').length
+                const pct = run.case_ids.length ? Math.round((passed / run.case_ids.length) * 100) : 0
+                return (
+                  <DDCard key={run.id} onClick={() => onPush('run', run)} last={i === sprintRuns.length - 1}>
+                    <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>▶ {run.name}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{run.case_ids.length} cases · {pct}% passed</p></div>
+                    <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                  </DDCard>
+                )
+              })}
+            </div>
+          )}
+          {(() => {
+            const sprintBugs = bugs.filter((b: any) => b.sprint_id === data.id)
+            if (sprintBugs.length === 0) return null
+            const sevCfgS: Record<string, {bg:string;color:string}> = {critical:{bg:'#fef2f2',color:'#b91c1c'},high:{bg:'#fff7ed',color:'#c2410c'},medium:{bg:'#fffbeb',color:'#d97706'},low:{bg:'#f0fdf4',color:'#15803d'}}
+            const stCfgS: Record<string, {bg:string;color:string;label:string}> = {open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"}}
+            return (
+              <div>
+                <p style={sectionLabel}>Bugs ({sprintBugs.length})</p>
+                {sprintBugs.map((bug: any, i: number) => {
+                  const sc = sevCfgS[bug.severity] || sevCfgS.medium
+                  const bc = stCfgS[bug.status] || stCfgS.open
+                  return (
+                    <DDCard key={bug.id} onClick={() => onPush('bug', bug)} last={i === sprintBugs.length - 1}>
+                      <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>🐛 {bug.title}</p></div>
+                      <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bug.severity}</span>
+                      <span style={{ background: bc.bg, color: bc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bc.label}</span>
+                      <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                    </DDCard>
+                  )
+                })}
+              </div>
+            )
+          })()}
+        </div>
+      )
+    }
+
+    if (type === 'plan') {
+      const planCases = cases.map(c => ({...c, sectionName: sections.find(s => s.id === c.section_id)?.name || ''})).filter(c => data.case_ids.includes(c.id))
+      return (
+        <div>
+          {data.description && <DDRow label="Description" value={data.description} />}
+          <DDRow label="Cases" value={`${planCases.length} test case${planCases.length !== 1 ? 's' : ''}`} />
+          <div style={{ marginTop: 8 }}>
+            <p style={sectionLabel}>Test Cases ({planCases.length})</p>
+            {planCases.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af' }}>No test cases in this plan.</p>}
+            {planCases.map((tc, i) => {
+              const pc = priorityCfg[tc.priority]
+              return (
+                <DDCard key={tc.id} onClick={() => onPush('case', tc, {bugs})} last={i === planCases.length - 1}>
+                  <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName} · {tc.type}</p></div>
+                  <span style={{ background: pc.bg, color: pc.color, fontSize: 11, fontWeight: 600, padding: '1px 6px', borderRadius: 4 }}>{tc.priority}</span>
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                </DDCard>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+
+    if (type === 'case' || type === 'runcase') {
+      const pc = priorityCfg[data.priority] || priorityCfg.medium
+      const runResults = extra?.results
+      const runId = extra?.runId
+      const showBugs = extra?.bugs !== undefined
+      const linkedBugs = showBugs ? (extra.bugs as any[]).filter((b: any) => {
+        const matchesCase = b.test_case_id === data.id
+        if (extra?.runId) return matchesCase && b.test_run_id === extra.runId
+        return matchesCase
+      }) : []
+      const stCfg: Record<string, {bg:string;color:string;label:string}> = { open:{bg:'#fef2f2',color:'#dc2626',label:'Open'}, in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'}, resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'}, closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'}, wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"} }
+      const sevCfg: Record<string, {bg:string;color:string}> = { critical:{bg:'#fef2f2',color:'#b91c1c'}, high:{bg:'#fff7ed',color:'#c2410c'}, medium:{bg:'#fffbeb',color:'#d97706'}, low:{bg:'#f0fdf4',color:'#15803d'} }
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            <span style={{ background: pc.bg, color: pc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{data.priority}</span>
+            <span style={{ background: '#f3f4f6', color: '#374151', fontSize: 11, padding: '2px 8px', borderRadius: 5 }}>{data.type}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', fontFamily: 'monospace' }}>TC-{data.id.slice(0,5).toUpperCase()}</span>
+          </div>
+          {runResults && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabel}>Current Status</p>
+              <span style={{ background: stColors[runResults[data.id] || 'untested'].bg, color: stColors[runResults[data.id] || 'untested'].color, fontSize: 13, fontWeight: 600, padding: '4px 12px', borderRadius: 6 }}>{runResults[data.id] || 'untested'}</span>
+            </div>
+          )}
+          {data.sectionName && <DDRow label="Section" value={data.sectionName} />}
+          {data.description && <DDRow label="Description" value={data.description} />}
+          {data.steps && <DDRow label="Steps to reproduce" value={<pre style={{ margin: 0, fontFamily: 'inherit', whiteSpace: 'pre-wrap', fontSize: 13, color: '#374151' }}>{data.steps}</pre>} />}
+          {data.expected_result && <DDRow label="Expected result" value={data.expected_result} />}
+          {showBugs && <div style={{ marginTop: 8 }}>
+            <p style={sectionLabel}>Linked bugs ({linkedBugs.length})</p>
+            {linkedBugs.length === 0 && <p style={{ fontSize: 13, color: '#9ca3af', margin: 0 }}>No bugs linked to this test case.</p>}
+            {linkedBugs.map((bug: any, i: number) => {
+              const sc = sevCfg[bug.severity] || sevCfg.medium
+              const bc = stCfg[bug.status] || stCfg.open
+              return (
+                <DDCard key={bug.id} onClick={() => onViewBug(bug)} last={i === linkedBugs.length - 1}>
+                  <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>🐛 {bug.title}</p></div>
+                  <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bug.severity}</span>
+                  <span style={{ background: bc.bg, color: bc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bc.label}</span>
+                  <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                </DDCard>
+              )
+            })}
+          </div>}
+          {runId && (
+            <div style={{ marginTop: 20 }}>
+              <p style={sectionLabel}>Update Status</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {(['pass','fail','skip'] as const).map(s => (
+                  <button key={s} onClick={() => onShowComment ? onShowComment(runId, data.id, s) : onUpdateRunResult(runId, data.id, s)}
+                    style={{ flex: 1, padding: '9px 0', fontSize: 13, cursor: 'pointer', borderRadius: 7, border: '1px solid #e5e7eb', fontFamily: 'inherit', fontWeight: 600, background: stColors[s].bg, color: stColors[s].color }}>
+                    {s === 'pass' ? '✓ Pass' : s === 'fail' ? '✗ Fail' : '— Skip'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <InlineComments entityId={data.id} entityType="test_case" />
+        </div>
+      )
+    }
+
+    if (type === 'run') {
+      const runCases = cases.map(c => ({...c, sectionName: sections.find(s => s.id === c.section_id)?.name || ''})).filter(c => data.case_ids.includes(c.id))
+      const res = data.results || {}
+      const passed = runCases.filter(c => res[c.id] === 'pass').length
+      const failed = runCases.filter(c => res[c.id] === 'fail').length
+      const skipped = runCases.filter(c => res[c.id] === 'skip').length
+      const untested = runCases.length - passed - failed - skipped
+      const pct = runCases.length ? Math.round((passed / runCases.length) * 100) : 0
+      const sprint = sprints.find(s => s.id === data.sprint_id)
+      const plan = testPlans.find(p => p.id === data.plan_id)
+      return (
+        <div>
+          {sprint && <DDRow label="Sprint" value={<button onClick={() => onPush('sprint', sprint)} style={linkBtn}>🏃 {sprint.name} →</button>} />}
+          {plan && <DDRow label="Test plan" value={<button onClick={() => onPush('plan', plan)} style={linkBtn}>📋 {plan.name} →</button>} />}
+          <DDRow label="Created" value={new Date(data.created_at).toLocaleDateString()} />
+          <div style={{ marginBottom: 16 }}>
+            <p style={sectionLabel}>Progress</p>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 8, fontSize: 13 }}>
+              <span style={{ color: '#15803d' }}>✓ {passed} pass</span><span style={{ color: '#dc2626' }}>✗ {failed} fail</span><span style={{ color: '#ca8a04' }}>— {skipped} skip</span><span style={{ color: '#9ca3af' }}>• {untested} untested</span>
+            </div>
+            <div style={{ height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}><div style={{ width: `${pct}%`, height: '100%', background: '#16a34a' }} /></div>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>{pct}% complete</p>
+          </div>
+          <p style={sectionLabel}>Test Cases ({runCases.length})</p>
+          {runCases.map((tc, i) => {
+            const st = res[tc.id] || 'untested'
+            const sc = stColors[st]
+            const pc = priorityCfg[tc.priority] || priorityCfg.medium
+            const tcBugs = bugs.filter((b: any) => b.test_case_id === tc.id)
+            return (
+              <DDCard key={tc.id} onClick={() => onPush('runcase', tc, {results: res, runId: data.id, bugs})} last={i === runCases.length - 1}>
+                <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>{tc.title}</p><p style={{ margin: 0, fontSize: 11, color: '#9ca3af' }}>{tc.sectionName}{tcBugs.length > 0 ? ` · 🐛 ${tcBugs.length} bug${tcBugs.length !== 1 ? 's' : ''}` : ''}</p></div>
+                <span style={{ background: pc.bg, color: pc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{tc.priority}</span>
+                <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{st}</span>
+                <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+              </DDCard>
+            )
+          })}
+          {(() => {
+            const runBugs = bugs.filter((b: any) => b.test_run_id === data.id && b.test_run_id !== null)
+            if (runBugs.length === 0) return null
+            const sevCfgR: Record<string, {bg:string;color:string}> = {critical:{bg:'#fef2f2',color:'#b91c1c'},high:{bg:'#fff7ed',color:'#c2410c'},medium:{bg:'#fffbeb',color:'#d97706'},low:{bg:'#f0fdf4',color:'#15803d'}}
+            const stCfgR: Record<string, {bg:string;color:string;label:string}> = {open:{bg:'#fef2f2',color:'#dc2626',label:'Open'},in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'},resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'},closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'},wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"}}
+            return (
+              <div style={{ marginTop: 16 }}>
+                <p style={sectionLabel}>Bugs in this run ({runBugs.length})</p>
+                {runBugs.map((bug: any, i: number) => {
+                  const sc = sevCfgR[bug.severity] || sevCfgR.medium
+                  const bc = stCfgR[bug.status] || stCfgR.open
+                  return (
+                    <DDCard key={bug.id} onClick={() => onPush('bug', bug)} last={i === runBugs.length - 1}>
+                      <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontWeight: 500, fontSize: 13 }}>🐛 {bug.title}</p></div>
+                      <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bug.severity}</span>
+                      <span style={{ background: bc.bg, color: bc.color, fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 3 }}>{bc.label}</span>
+                      <span style={{ color: '#9ca3af', fontSize: 13 }}>→</span>
+                    </DDCard>
+                  )
+                })}
+              </div>
+            )
+          })()}
+        </div>
+      )
+    }
+
+    if (type === 'bug') {
+      const sprint = sprints.find(s => s.id === data.sprint_id)
+      const run = runs.find(r => r.id === data.test_run_id)
+      const tc = cases.find(c => c.id === data.test_case_id)
+      const sevCfgB: Record<string, {bg:string;color:string;label:string}> = { critical:{bg:'#fef2f2',color:'#b91c1c',label:'Critical'}, high:{bg:'#fff7ed',color:'#c2410c',label:'High'}, medium:{bg:'#fffbeb',color:'#d97706',label:'Medium'}, low:{bg:'#f0fdf4',color:'#15803d',label:'Low'} }
+      const stCfgB: Record<string, {bg:string;color:string;label:string}> = { open:{bg:'#fef2f2',color:'#dc2626',label:'Open'}, in_progress:{bg:'#eff6ff',color:'#2563eb',label:'In Progress'}, resolved:{bg:'#f0fdf4',color:'#15803d',label:'Resolved'}, closed:{bg:'#f3f4f6',color:'#374151',label:'Closed'}, wont_fix:{bg:'#faf5ff',color:'#7c3aed',label:"Won't Fix"} }
+      const sc = sevCfgB[data.severity] || sevCfgB.medium
+      const bc = stCfgB[data.status] || stCfgB.open
+      const imgs = (data.attachments||[]).filter((u: string) => !u.match(/\.(mp4|webm|mov)$/i))
+      const vids = (data.attachments||[]).filter((u: string) => u.match(/\.(mp4|webm|mov)$/i))
+      return (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+            <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{sc.label}</span>
+            <span style={{ background: bc.bg, color: bc.color, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 5 }}>{bc.label}</span>
+          </div>
+          {sprint && <DDRow label="Sprint" value={<button onClick={() => onPush('sprint', sprint)} style={linkBtn}>🏃 {sprint.name} →</button>} />}
+          {run && <DDRow label="Test run" value={<button onClick={() => onPush('run', run)} style={linkBtn}>▶ {run.name} →</button>} />}
+          {tc && <DDRow label="Test case" value={<button onClick={() => onPush('case', {...tc, sectionName: sections.find(s => s.id === tc.section_id)?.name || ''})} style={linkBtn}>🧪 {tc.title} →</button>} />}
+          {data.description && <DDRow label="Description" value={data.description} />}
+          {data.steps && <DDRow label="Steps to reproduce" value={<pre style={{ margin:0, fontFamily:'inherit', whiteSpace:'pre-wrap', fontSize:13, color:'#374151' }}>{data.steps}</pre>} />}
+          {data.expected_result && <DDRow label="Expected result" value={data.expected_result} />}
+          {data.actual_result && <DDRow label="Actual result" value={data.actual_result} />}
+          {imgs.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabel}>Screenshots ({imgs.length})</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 8 }}>
+                {imgs.map((url: string, i: number) => <a key={i} href={url} target="_blank" rel="noreferrer"><img src={url} alt={`screenshot-${i+1}`} style={{ width:'100%', height:90, objectFit:'cover', borderRadius:6, border:'1px solid #e5e7eb', display:'block' }} /></a>)}
+              </div>
+            </div>
+          )}
+          {vids.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={sectionLabel}>Videos ({vids.length})</p>
+              {vids.map((url: string, i: number) => <video key={i} src={url} controls style={{ width:'100%', borderRadius:6, marginBottom:6 }} />)}
+            </div>
+          )}
+          <InlineComments entityId={data.id} entityType="bug" />
+        </div>
+      )
+    }
+
+    return null
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' }} onClick={onClose} />
+      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 520, background: '#fff', display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 24px rgba(0,0,0,0.15)' }}>
+        <div style={{ padding: '0 20px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '10px 0 0', flexWrap: 'wrap' }}>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#9ca3af', fontFamily: 'inherit', padding: '2px 4px' }}>Project</button>
+            {stack.map((entry, i) => (
+              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: 11, color: '#d1d5db' }}>›</span>
+                <button onClick={() => i < stack.length - 1 ? onGoTo(i) : undefined}
+                  style={{ background: 'none', border: 'none', cursor: i < stack.length - 1 ? 'pointer' : 'default', fontSize: 12, color: i === stack.length - 1 ? '#111' : '#6b7280', fontFamily: 'inherit', fontWeight: i === stack.length - 1 ? 600 : 400, padding: '2px 4px' }}>
+                  {entry.data.name || entry.data.title}
+                </button>
+              </span>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {stack.length > 1 && (
+                <button onClick={onPop} style={{ background: 'none', border: '1px solid #e5e7eb', cursor: 'pointer', borderRadius: 6, padding: '4px 8px', fontSize: 12, color: '#6b7280', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>← Back</button>
+              )}
+              <div>
+                <span style={{ fontSize: 11, color: '#9ca3af' }}>{typeLabel[current.type]}</span>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>{current.data.name || current.data.title}</h2>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 22, color: '#9ca3af', lineHeight: 1 }}>×</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>{renderContent()}</div>
+      </div>
+    </div>
+  )
+}
+
+function DDRow({ label, value }: { label: string; value?: React.ReactNode }) {
+  if (!value) return null
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <p style={sectionLabel}>{label}</p>
+      <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{value}</div>
+    </div>
+  )
+}
+
+function DDCard({ children, onClick, last }: { children: React.ReactNode; onClick: () => void; last?: boolean }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer', borderRadius: 8, border: '1px solid #e5e7eb', marginBottom: last ? 0 : 6, background: hovered ? '#f9fafb' : '#fff', transition: 'background 0.1s' }}>
+      {children}
+    </div>
+  )
+}
+
+const sectionLabel: React.CSSProperties = { margin: '0 0 8px', fontSize: 11, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }
+const linkBtn: React.CSSProperties = { background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, color: '#2563eb', fontFamily: 'inherit', textDecoration: 'underline' }
+
+function FailCommentModal({ status, runId, caseId, allBugs, projectId, sprints, runs, cases, members, onConfirm, onClose }: {
+  status: RunStatus; runId: string; caseId: string; allBugs: any[]; projectId: string; sprints: any[]; runs: any[]; cases: any[]; members?: any[];
+  onConfirm: (comment: string, bugId?: string) => void; onClose: () => void
+}) {
+  const [comment, setComment] = useState('')
+  const [bugAction, setBugAction] = useState<'none' | 'link' | 'create'>('none')
+  const [bugSearch, setBugSearch] = useState('')
+  const [selectedBugId, setSelectedBugId] = useState('')
+  const [newBugTitle, setNewBugTitle] = useState('')
+  const [newBugSeverity, setNewBugSeverity] = useState('medium')
+  const [newBugPriority, setNewBugPriority] = useState('medium')
+  const [newBugStatus, setNewBugStatus] = useState('open')
+  const [newBugDescription, setNewBugDescription] = useState('')
+  const [newBugSteps, setNewBugSteps] = useState('')
+  const [newBugExpected, setNewBugExpected] = useState('')
+  const [newBugActual, setNewBugActual] = useState('')
+  const [creating, setCreating] = useState(false)
+  const sb = createClient()
+
+  const sc = ({pass:{bg:'#dcfce7',color:'#15803d'},fail:{bg:'#fee2e2',color:'#dc2626'},skip:{bg:'#fef9c3',color:'#ca8a04'}} as any)[status]
+  const filteredBugs = allBugs.filter(b => { const q = bugSearch.toLowerCase(); return b.title.toLowerCase().includes(q) || b.id.slice(0,8).toUpperCase().includes(q.toUpperCase()) }).slice(0, 10)
+
+  const handleConfirm = async () => {
+    setCreating(true)
+    let bugId = selectedBugId || undefined
+    if (bugAction === 'link' && selectedBugId) {
+      await sb.from('bugs').update({ test_run_id: runId, test_case_id: caseId }).eq('id', selectedBugId)
+      bugId = selectedBugId
+    }
+    if (bugAction === 'create' && newBugTitle.trim()) {
+      const { data: { session } } = await sb.auth.getSession()
+      const { data: newBug } = await sb.from('bugs').insert({
+        title: newBugTitle.trim(), description: newBugDescription.trim() || comment.trim(), steps: newBugSteps.trim(),
+        expected_result: newBugExpected.trim(), actual_result: newBugActual.trim(),
+        severity: newBugSeverity, status: newBugStatus, priority: newBugPriority,
+        project_id: projectId, test_run_id: runId, test_case_id: caseId, created_by: session?.user?.id,
+      }).select().single()
+      bugId = newBug?.id
+    }
+    onConfirm(comment, bugId)
+    setCreating(false)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, padding: 16 }}>
+      <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e5e7eb', width: '100%', maxWidth: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Mark as {status === 'pass' ? '✓ Pass' : status === 'fail' ? '✗ Fail' : '— Skip'}</span>
+          <span style={{ background: sc.bg, color: sc.color, fontSize: 11, fontWeight: 600, padding: '2px 7px', borderRadius: 4 }}>{status}</span>
+        </div>
+        <div style={{ padding: 20 }}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 6 }}>Comment <span style={{ color: '#9ca3af', fontWeight: 400 }}>(optional)</span></label>
+            <MentionInput value={comment} onChange={setComment} members={members || []} placeholder="e.g. Failed on Chrome only... type @ to mention" rows={3} />
+          </div>
+          {status === 'fail' && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 500, color: '#6b7280', marginBottom: 8 }}>Bug (optional)</label>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                {(['none','link','create'] as const).map(action => (
+                  <button key={action} onClick={() => setBugAction(action)}
+                    style={{ flex: 1, padding: '7px 0', fontSize: 12, cursor: 'pointer', borderRadius: 6, border: `1px solid ${bugAction === action ? (action === 'create' ? '#dc2626' : action === 'link' ? '#2563eb' : '#111') : '#d1d5db'}`, background: bugAction === action ? (action === 'create' ? '#fef2f2' : action === 'link' ? '#eff6ff' : '#111') : '#fff', color: bugAction === action ? (action === 'create' ? '#dc2626' : action === 'link' ? '#2563eb' : '#fff') : '#374151', fontWeight: bugAction === action ? 600 : 400 }}>
+                    {action === 'none' ? 'No bug' : action === 'link' ? 'Link existing' : '+ New bug'}
+                  </button>
+                ))}
+              </div>
+              {bugAction === 'link' && (
+                <div>
+                  <input value={bugSearch} onChange={e => { setBugSearch(e.target.value); setSelectedBugId('') }} placeholder="Search by title or ID..."
+                    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 7, padding: '8px 11px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, marginBottom: 8 }} />
+                  <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 7 }}>
+                    {filteredBugs.length === 0 && <p style={{ padding: '10px 12px', fontSize: 13, color: '#9ca3af', margin: 0 }}>No bugs found</p>}
+                    {filteredBugs.map((bug, i) => {
+                      const sevC: any = {critical:'#b91c1c',high:'#c2410c',medium:'#d97706',low:'#15803d'}
+                      const stC: any = {open:'#dc2626',in_progress:'#2563eb',resolved:'#15803d',closed:'#374151',wont_fix:'#7c3aed'}
+                      return (
+                        <div key={bug.id} onClick={() => setSelectedBugId(bug.id)}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', cursor: 'pointer', borderTop: i > 0 ? '1px solid #f3f4f6' : 'none', background: selectedBugId === bug.id ? '#eff6ff' : '#fff' }}>
+                          <div style={{ flex: 1 }}><p style={{ margin: '0 0 2px', fontSize: 13, fontWeight: selectedBugId === bug.id ? 600 : 400 }}>🐛 {bug.title}</p><p style={{ margin: 0, fontSize: 10, color: '#9ca3af', fontFamily: 'monospace' }}>{bug.id.slice(0,8).toUpperCase()}</p></div>
+                          <span style={{ fontSize: 10, color: sevC[bug.severity], fontWeight: 600 }}>{bug.severity}</span>
+                          <span style={{ fontSize: 10, color: stC[bug.status], fontWeight: 600 }}>{bug.status.replace('_',' ')}</span>
+                          {selectedBugId === bug.id && <span style={{ color: '#2563eb', fontSize: 14 }}>✓</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {selectedBugId && <p style={{ fontSize: 12, color: '#2563eb', margin: '6px 0 0' }}>✓ Bug selected</p>}
+                </div>
+              )}
+              {bugAction === 'create' && (
+                <div style={{ border: '1px solid #fecaca', borderRadius: 8, padding: 14, background: '#fff5f5' }}>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>Title *</label>
+                    <input value={newBugTitle} onChange={e => setNewBugTitle(e.target.value)} placeholder="Brief summary of the bug"
+                      style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, background: '#fff' }} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                    {[['Severity', newBugSeverity, setNewBugSeverity, ['critical','high','medium','low']], ['Priority', newBugPriority, setNewBugPriority, ['high','medium','low']], ['Status', newBugStatus, setNewBugStatus, ['open','in_progress']]].map(([label, val, setter, opts]: any) => (
+                      <div key={label}>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>{label}</label>
+                        <select value={val} onChange={e => setter(e.target.value)} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 8px', fontSize: 12, outline: 'none', background: '#fff', cursor: 'pointer' }}>
+                          {opts.map((o: string) => <option key={o} value={o}>{o.charAt(0).toUpperCase() + o.slice(1).replace('_',' ')}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                  {[['Description', newBugDescription, setNewBugDescription, 'What went wrong?', 2], ['Steps to reproduce', newBugSteps, setNewBugSteps, '1. Go to... 2. Click... 3. Observe...', 3]].map(([label, val, setter, ph, rows]: any) => (
+                    <div key={label} style={{ marginBottom: 10 }}>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>{label}</label>
+                      <textarea value={val} onChange={e => setter(e.target.value)} placeholder={ph} rows={rows}
+                        style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
+                    </div>
+                  ))}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    {[['Expected result', newBugExpected, setNewBugExpected, 'What should happen?'], ['Actual result', newBugActual, setNewBugActual, 'What actually happened?']].map(([label, val, setter, ph]: any) => (
+                      <div key={label}>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: '#6b7280', marginBottom: 4 }}>{label}</label>
+                        <textarea value={val} onChange={e => setter(e.target.value)} placeholder={ph} rows={2}
+                          style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' as const, background: '#fff' }} />
+                      </div>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: 11, color: '#9ca3af', margin: '8px 0 0' }}>Bug will be linked to this test case and run automatically.</p>
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={{ border: '1px solid #d1d5db', borderRadius: 7, padding: '7px 14px', fontSize: 13, background: '#fff', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={handleConfirm} disabled={creating || (bugAction === 'create' && !newBugTitle.trim())}
+              style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.color}`, borderRadius: 7, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: creating ? 'not-allowed' : 'pointer', opacity: creating ? 0.6 : 1 }}>
+              {creating ? 'Saving...' : `Confirm ${status}`}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
